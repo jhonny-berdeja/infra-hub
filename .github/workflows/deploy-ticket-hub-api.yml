@@ -1,8 +1,13 @@
 name: Deploy ticket-hub-api
 
 on:
-  repository_dispatch:
-    types: [deploy-ticket-hub-api]
+  # Single trigger for both callers (design ADR-3, revision 3): manual runs
+  # and the automated call from ticket-hub-api's publish-image.yml (via
+  # `gh workflow run`) both arrive here as workflow_dispatch. There is no
+  # separate repository_dispatch entry point - that mechanism was removed
+  # because it can only be called with a fine-grained PAT scoped to
+  # `contents: write`, which is exactly the capability this design's
+  # least-privilege token is meant to deny.
   workflow_dispatch:
     inputs:
       image_tag:
@@ -21,10 +26,11 @@ jobs:
   deploy:
     name: Deploy to pcbox microk8s
     runs-on: ubuntu-latest
-    # Approval gate: both trigger paths (repository_dispatch from
-    # ticket-hub-api and the workflow_dispatch fallback) pause here in
-    # "Waiting" until a required reviewer on the production Environment
-    # approves. No kubectl command in this job runs before that approval.
+    # Approval gate: both callers (the automated dispatch from
+    # ticket-hub-api and a manual run) arrive as workflow_dispatch and
+    # pause here in "Waiting" until a required reviewer on the production
+    # Environment approves. No kubectl command in this job runs before
+    # that approval.
     environment: production
     steps:
       - name: Checkout
@@ -33,10 +39,7 @@ jobs:
       - name: Determine image tag
         id: image_tag
         run: |
-          TAG="${{ github.event.client_payload.image_tag }}"
-          if [ -z "$TAG" ]; then
-            TAG="${{ github.event.inputs.image_tag }}"
-          fi
+          TAG="${{ github.event.inputs.image_tag }}"
           if [ -z "$TAG" ]; then
             TAG="master"
           fi

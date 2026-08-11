@@ -1,0 +1,6 @@
+# Idempotent: applying this when `ticket-hub` already exists (e.g. created
+# by ticket-hub-db's own setup) is a no-op.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ticket-hub

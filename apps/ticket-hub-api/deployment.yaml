@@ -1,0 +1,79 @@
+# All 7 env vars mirror the table in ticket-hub-api's README.md and are
+# validated as mandatory by src/common/config/env.validation.ts — the Pod
+# fails fast at boot if any is missing or malformed.
+#
+# `ticket-hub-db-credentials` and the `ticket-hub-db` Service are assumed
+# to already exist (owned by ticket-hub-db's own setup, not this repo).
+# `ticket-hub-api-credentials` is created from secret.example.yaml — see
+# apps/ticket-hub-api's usage in this repo's README.md.
+#
+# Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
+# with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
+# tag before `kubectl apply`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticket-hub-api
+  namespace: ticket-hub
+  labels:
+    app: ticket-hub-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticket-hub-api
+  template:
+    metadata:
+      labels:
+        app: ticket-hub-api
+    spec:
+      containers:
+        - name: ticket-hub-api
+          image: docker.io/DOCKERHUB_USER/ticket-hub-api:IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ticket-hub-db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ticket-hub-db-credentials
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_HOST
+              value: ticket-hub-db.ticket-hub.svc.cluster.local
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: ticket-hub-db
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ticket-hub-api-credentials
+                  key: JWT_SECRET
+            - name: PORT
+              value: "3000"
+          # TCP, not HTTP: the app exposes no GET route at "/" (only
+          # POST /users and POST /auth/login), so an httpGet probe on "/"
+          # would 404 forever and the Pod would never go Ready.
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

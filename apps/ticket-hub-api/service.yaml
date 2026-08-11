@@ -6,15 +6,14 @@ metadata:
 spec:
   selector:
     app: ticket-hub-api
-  # NodePort (not ClusterIP): ticket-hub (the frontend) runs on the
-  # client's own PC, outside the cluster, and its Next.js Route Handler
-  # calls this API server-to-server over Tailscale - it needs a port
-  # reachable from outside the cluster network. No CORS config is needed
-  # here because the browser only ever talks to the Next.js server, never
-  # directly to this API. nodePort is pinned (not auto-assigned) so the
-  # frontend's TICKET_HUB_API_URL stays stable across redeploys.
+  # ClusterIP: ticket-hub (the frontend) runs as a Pod in this same
+  # cluster/namespace (see apps/ticket-hub/deployment.yaml) and reaches
+  # this API over the in-cluster DNS name
+  # (ticket-hub-api.ticket-hub.svc.cluster.local) - no NodePort needed,
+  # nothing outside the cluster talks to this API directly. No CORS
+  # config is needed either, since the browser only ever talks to the
+  # Next.js server, never to this backend.
   ports:
     - port: 3000
       targetPort: 3000
-      nodePort: 30300
-  type: NodePort
+  type: ClusterIP

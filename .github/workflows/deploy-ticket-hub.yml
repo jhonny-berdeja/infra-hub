@@ -1,0 +1,103 @@
+name: Deploy ticket-hub
+
+on:
+  # Single trigger for both callers, same pattern as deploy-ticket-hub-api:
+  # manual runs and the automated call from ticket-hub's own publish
+  # workflow (via `gh workflow run`) both arrive here as workflow_dispatch.
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (defaults to master)"
+        required: false
+        default: master
+
+concurrency:
+  group: deploy-ticket-hub-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to pcbox microk8s
+    runs-on: ubuntu-latest
+    # No approval gate here on purpose: the gate lives on ticket-hub's own
+    # repo (its dispatch-deploy job), mirroring the ticket-hub-api setup -
+    # once that gate approves, this run proceeds without a second click.
+    # The manual workflow_dispatch button on this side remains ungated,
+    # same deliberate trade-off as ticket-hub-api's deploy workflow.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: image_tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="master"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # Fail-closed validation of attacker-shaped input before it is
+      # interpolated into the sed expression and kubectl arguments below,
+      # and before any cluster credential is written to disk - same
+      # guard ticket-hub-api's deploy uses.
+      - name: Validate image tag
+        run: scripts/validate-image-tag.sh "${{ steps.image_tag.outputs.tag }}"
+
+      - name: Join tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:continuous-integration
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PCBOX }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Verify cluster reachability
+        run: kubectl get nodes
+
+      - name: Prepare manifests
+        run: |
+          mkdir -p /tmp/ticket-hub-manifests
+          cp apps/ticket-hub/deployment.yaml \
+             apps/ticket-hub/service.yaml \
+             /tmp/ticket-hub-manifests/
+          sed -i \
+            -e "s|DOCKERHUB_USER|${{ secrets.DOCKERHUB_USERNAME }}|g" \
+            -e "s|IMAGE_TAG|${{ steps.image_tag.outputs.tag }}|g" \
+            /tmp/ticket-hub-manifests/deployment.yaml
+
+      - name: Apply manifests
+        run: kubectl apply -f /tmp/ticket-hub-manifests/
+
+      - name: Restart rollout
+        # Tags are mutable (branch-name tags, always "master" in
+        # practice). Re-deploying the same tag leaves the manifest
+        # unchanged, so `apply` alone produces no diff and no rollout.
+        # `imagePullPolicy: Always` is set, so an explicit restart is
+        # what actually pulls the new digest.
+        run: kubectl rollout restart deployment/ticket-hub -n ticket-hub
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/ticket-hub -n ticket-hub --timeout=180s
+
+      - name: Verify deployment
+        run: |
+          kubectl get deployment ticket-hub -n ticket-hub
+          kubectl get pods -n ticket-hub -l app=ticket-hub
+          kubectl get service ticket-hub -n ticket-hub
+          echo "Deployed image:"
+          kubectl get deployment ticket-hub -n ticket-hub -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl describe deployment ticket-hub -n ticket-hub || true
+          kubectl get events -n ticket-hub --sort-by=.lastTimestamp | tail -n 50 || true

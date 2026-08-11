@@ -1,0 +1,60 @@
+# The frontend runs as a Pod in the same cluster as ticket-hub-api, so
+# its Route Handler (app/api/login/route.ts) reaches the backend over the
+# in-cluster ClusterIP DNS name, not the NodePort/Tailscale path a client
+# outside the cluster has to use.
+#
+# TICKET_HUB_COOKIE_SECURE is "false": no Ingress/TLS termination is set
+# up for this app (see ticket-hub-api's deploy for the same reasoning) -
+# hardcoding secure:true over plain HTTP would silently drop the login
+# cookie.
+#
+# Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
+# with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
+# tag before `kubectl apply`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticket-hub
+  namespace: ticket-hub
+  labels:
+    app: ticket-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticket-hub
+  template:
+    metadata:
+      labels:
+        app: ticket-hub
+    spec:
+      containers:
+        - name: ticket-hub
+          image: docker.io/DOCKERHUB_USER/ticket-hub:IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: TICKET_HUB_API_URL
+              value: http://ticket-hub-api.ticket-hub.svc.cluster.local:3000
+            - name: TICKET_HUB_COOKIE_SECURE
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

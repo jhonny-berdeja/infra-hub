@@ -73,16 +73,24 @@ jobs:
       - name: Wait for the rollout to finish.
         run: kubectl rollout status deployment/ticket-hub -n ticket-hub --timeout=180s
 
-      - name: Verify the deployment and print the deployed image.
+      - name: Print the deployment status.
+        run: kubectl get deployment ticket-hub -n ticket-hub
+
+      - name: Print the running pods.
+        run: kubectl get pods -n ticket-hub -l app=ticket-hub
+
+      - name: Print the service.
+        run: kubectl get service ticket-hub -n ticket-hub
+
+      - name: Print the deployed image reference.
         run: |
-          kubectl get deployment ticket-hub -n ticket-hub
-          kubectl get pods -n ticket-hub -l app=ticket-hub
-          kubectl get service ticket-hub -n ticket-hub
           echo "Deployed image:"
           kubectl get deployment ticket-hub -n ticket-hub -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 
-      - name: Show diagnostics if the deploy failed.
+      - name: Describe the deployment if the deploy failed.
         if: failure()
-        run: |
-          kubectl describe deployment ticket-hub -n ticket-hub || true
-          kubectl get events -n ticket-hub --sort-by=.lastTimestamp | tail -n 50 || true
+        run: kubectl describe deployment ticket-hub -n ticket-hub || true
+
+      - name: Show recent cluster events if the deploy failed.
+        if: failure()
+        run: kubectl get events -n ticket-hub --sort-by=.lastTimestamp | tail -n 50 || true

@@ -1,13 +1,6 @@
 name: Deploy ticket-hub-api
 
 on:
-  # Single trigger for both callers (design ADR-3, revision 3): manual runs
-  # and the automated call from ticket-hub-api's publish-image.yml (via
-  # `gh workflow run`) both arrive here as workflow_dispatch. There is no
-  # separate repository_dispatch entry point - that mechanism was removed
-  # because it can only be called with a fine-grained PAT scoped to
-  # `contents: write`, which is exactly the capability this design's
-  # least-privilege token is meant to deny.
   workflow_dispatch:
     inputs:
       image_tag:
@@ -24,7 +17,7 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy to pcbox microk8s
+    name: Deploy ticket-hub-api to pcbox microk8s.
     runs-on: ubuntu-latest
     # Approval gate: both callers (the automated dispatch from
     # ticket-hub-api and a manual run) arrive as workflow_dispatch and
@@ -33,83 +26,82 @@ jobs:
     # that approval.
     environment: production
     steps:
-      - name: Checkout
+      - name: Clone the repository to access the manifests and scripts.
         uses: actions/checkout@v4
 
-      - name: Determine image tag
-        id: image_tag
+      - name: Save the requested image tag to GITHUB_ENV, defaulting to master.
         run: |
-          TAG="${{ github.event.inputs.image_tag }}"
-          if [ -z "$TAG" ]; then
-            TAG="master"
+          IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "$IMAGE_TAG" ]; then
+            IMAGE_TAG="master"
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
 
-      # Fail-closed validation of attacker-shaped, cross-repo input before
-      # it is interpolated into the sed expression and kubectl arguments
-      # below, and before any cluster credential is written to disk
-      # (design ADR-7).
-      - name: Validate image tag
-        run: scripts/validate-image-tag.sh "${{ steps.image_tag.outputs.tag }}"
+      - name: Validate the image tag before it reaches later shell commands.
+        run: scripts/validate-image-tag.sh "$IMAGE_TAG"
 
-      - name: Join tailnet
+      - name: Join the Tailscale network to reach the microk8s API server.
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:continuous-integration
 
-      - name: Write kubeconfig
+      - name: Save the kubeconfig to connect to the microk8s cluster.
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_PCBOX }}" > ~/.kube/config
           chmod 600 ~/.kube/config
 
-      - name: Verify cluster reachability
-        # Fails fast if the tailnet/API precondition isn't met, before
-        # attempting any apply.
+      - name: Verify that the cluster is reachable before applying any manifest.
         run: kubectl get nodes
 
-      - name: Prepare manifests
+      # secret.example.yaml is intentionally excluded: it is a template
+      # for a manually created, gitignored secret.yaml, not something CI
+      # should ever apply (that would overwrite the real JWT_SECRET with
+      # the placeholder value).
+      - name: Copy the manifest templates to a working directory.
         run: |
           mkdir -p /tmp/ticket-hub-api-manifests
-          # secret.example.yaml is intentionally excluded: it is a
-          # template for a manually created, gitignored secret.yaml, not
-          # something CI should ever apply (that would overwrite the real
-          # JWT_SECRET with the placeholder value).
           cp apps/ticket-hub-api/namespace.yaml \
              apps/ticket-hub-api/deployment.yaml \
              apps/ticket-hub-api/service.yaml \
              /tmp/ticket-hub-api-manifests/
+
+      - name: Replace the Docker Hub username and image tag placeholders in the manifests.
+        run: |
           sed -i \
             -e "s|DOCKERHUB_USER|${{ secrets.DOCKERHUB_USERNAME }}|g" \
-            -e "s|IMAGE_TAG|${{ steps.image_tag.outputs.tag }}|g" \
+            -e "s|IMAGE_TAG|$IMAGE_TAG|g" \
             /tmp/ticket-hub-api-manifests/deployment.yaml
 
-      - name: Apply manifests
+      - name: Apply the manifests to the microk8s cluster.
         run: kubectl apply -f /tmp/ticket-hub-api-manifests/
 
-      - name: Restart rollout
-        # Tags are mutable (branch-name tags, always "master" in
-        # practice). Re-deploying the same tag leaves the manifest
-        # unchanged, so `apply` alone produces no diff and no rollout.
-        # `imagePullPolicy: Always` is set, so an explicit restart is
-        # what actually pulls the new digest.
+      - name: Restart the rollout so the new image digest is pulled.
         run: kubectl rollout restart deployment/ticket-hub-api -n ticket-hub
 
-      - name: Wait for rollout
+      - name: Wait for the rollout to finish.
         run: kubectl rollout status deployment/ticket-hub-api -n ticket-hub --timeout=180s
 
-      - name: Verify deployment
+      - name: Print the deployment status.
+        run: kubectl get deployment ticket-hub-api -n ticket-hub
+
+      - name: Print the running pods.
+        run: kubectl get pods -n ticket-hub -l app=ticket-hub-api
+
+      - name: Print the service.
+        run: kubectl get service ticket-hub-api -n ticket-hub
+
+      - name: Print the deployed image reference.
         run: |
-          kubectl get deployment ticket-hub-api -n ticket-hub
-          kubectl get pods -n ticket-hub -l app=ticket-hub-api
-          kubectl get service ticket-hub-api -n ticket-hub
           echo "Deployed image:"
           kubectl get deployment ticket-hub-api -n ticket-hub -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 
-      - name: Diagnostics on failure
+      - name: Describe the deployment if the deploy failed.
         if: failure()
-        run: |
-          kubectl describe deployment ticket-hub-api -n ticket-hub || true
-          kubectl get events -n ticket-hub --sort-by=.lastTimestamp | tail -n 50 || true
+        run: kubectl describe deployment ticket-hub-api -n ticket-hub || true
+
+      - name: Show recent cluster events if the deploy failed.
+        if: failure()
+        run: kubectl get events -n ticket-hub --sort-by=.lastTimestamp | tail -n 50 || true

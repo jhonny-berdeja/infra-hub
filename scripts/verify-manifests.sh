@@ -25,10 +25,8 @@ cp "$SRC_DIR/namespace.yaml" "$SRC_DIR/deployment.yaml" "$SRC_DIR/service.yaml" 
 FAKE_USER="exampleuser"
 FAKE_TAG="master"
 
-sed -i \
-  -e "s|DOCKERHUB_USER|$FAKE_USER|g" \
-  -e "s|IMAGE_TAG|$FAKE_TAG|g" \
-  "$WORK_DIR/deployment.yaml"
+"$REPO_ROOT/.github/scripts/substitute-manifest-placeholders.sh" \
+  "$FAKE_USER" "$FAKE_TAG" "$WORK_DIR/deployment.yaml"
 
 echo "== Checking for leftover placeholder tokens =="
 if grep -RE 'DOCKERHUB_USER|IMAGE_TAG' "$WORK_DIR" >/dev/null 2>&1; then

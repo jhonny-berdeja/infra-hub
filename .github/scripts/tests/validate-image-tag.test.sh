@@ -7,7 +7,7 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="$SCRIPT_DIR/validate-image-tag.sh"
+TARGET="$SCRIPT_DIR/../validate-image-tag.sh"
 
 pass=0
 fail=0

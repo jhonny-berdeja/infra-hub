@@ -1,0 +1,58 @@
+# pcbox-api has no database, no JWT secret, and no other app-specific
+# config yet -- this Deployment stays minimal (image, port, resources,
+# probes) on purpose. Add env vars / secretKeyRefs here only once the
+# app actually needs them, mirroring ticket-hub-api's env block as a
+# reference shape when that day comes.
+#
+# Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
+# with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
+# tag before `kubectl apply`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcbox-api
+  namespace: pcbox-api
+  labels:
+    app: pcbox-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pcbox-api
+  template:
+    metadata:
+      labels:
+        app: pcbox-api
+    spec:
+      containers:
+        - name: pcbox-api
+          image: docker.io/DOCKERHUB_USER/pcbox-api:IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+          # HTTP, not TCP: unlike ticket-hub-api, this app's default
+          # NestJS scaffold DOES expose GET / (returns "Hello World!",
+          # 200 OK), so an httpGet probe on "/" is a real readiness
+          # check instead of a bare TCP connect.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

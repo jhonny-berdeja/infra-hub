@@ -1,0 +1,7 @@
+# Dedicated namespace, one per app (same convention as ticket-hub and
+# grafana). Idempotent: applying this when `pcbox-api` already exists
+# is a no-op.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pcbox-api

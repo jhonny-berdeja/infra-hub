@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pcbox-api
+  namespace: pcbox-api
+spec:
+  selector:
+    app: pcbox-api
+  # ClusterIP: nothing outside the cluster talks to this API directly
+  # yet (same reasoning as ticket-hub-api's Service) - revisit if/when
+  # pcbox-api gets a frontend or needs external exposure.
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP

@@ -1,0 +1,94 @@
+name: Deploy pcbox-api
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (defaults to master)"
+        required: false
+        default: master
+
+concurrency:
+  group: deploy-pcbox-api-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy pcbox-api to pcbox microk8s.
+    runs-on: ubuntu-latest
+    # Approval gate: both callers (the automated dispatch from
+    # pcbox-api and a manual run) arrive as workflow_dispatch and
+    # pause here in "Waiting" until a required reviewer on the production
+    # Environment approves. No kubectl command in this job runs before
+    # that approval.
+    environment: production
+    steps:
+      - name: Clone the repository to access the manifests and scripts.
+        uses: actions/checkout@v4
+
+      - name: Save the requested image tag to GITHUB_ENV, defaulting to master.
+        env:
+          REQUESTED_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          IMAGE_TAG="$(.github/scripts/resolve-image-tag.sh "$REQUESTED_IMAGE_TAG")"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Validate the image tag before it reaches later shell commands.
+        run: .github/scripts/validate-image-tag.sh "$IMAGE_TAG"
+
+      - name: Join the Tailscale network to reach the microk8s API server.
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:continuous-integration
+
+      - name: Save the kubeconfig to connect to the microk8s cluster.
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG_PCBOX }}
+        run: .github/scripts/save-kubeconfig.sh
+
+      - name: Verify that the cluster is reachable before applying any manifest.
+        run: kubectl get nodes
+
+      - name: Copy the manifest templates to a working directory.
+        run: |
+          WORK_DIR="$(.github/scripts/copy-manifest-templates.sh pcbox-api namespace.yaml deployment.yaml service.yaml)"
+          echo "WORK_DIR=$WORK_DIR" >> "$GITHUB_ENV"
+
+      - name: Replace the Docker Hub username and image tag placeholders in the manifests.
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: .github/scripts/substitute-manifest-placeholders.sh "$DOCKERHUB_USERNAME" "$IMAGE_TAG" "$WORK_DIR/deployment.yaml"
+
+      - name: Apply the manifests to the microk8s cluster.
+        run: kubectl apply -f "$WORK_DIR/"
+
+      - name: Restart the rollout so the new image digest is pulled.
+        run: kubectl rollout restart deployment/pcbox-api -n pcbox-api
+
+      - name: Wait for the rollout to finish.
+        run: kubectl rollout status deployment/pcbox-api -n pcbox-api --timeout=180s
+
+      - name: Print the deployment status.
+        run: kubectl get deployment pcbox-api -n pcbox-api
+
+      - name: Print the running pods.
+        run: kubectl get pods -n pcbox-api -l app=pcbox-api
+
+      - name: Print the service.
+        run: kubectl get service pcbox-api -n pcbox-api
+
+      - name: Print the deployed image reference.
+        run: .github/scripts/print-deployed-image.sh pcbox-api pcbox-api
+
+      - name: Describe the deployment if the deploy failed.
+        if: failure()
+        run: kubectl describe deployment pcbox-api -n pcbox-api || true
+
+      - name: Show recent cluster events if the deploy failed.
+        if: failure()
+        run: .github/scripts/show-recent-cluster-events.sh pcbox-api

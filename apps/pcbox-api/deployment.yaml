@@ -1,12 +1,19 @@
-# pcbox-api has no database, no JWT secret, and no other app-specific
-# config yet -- this Deployment stays minimal (image, port, resources,
-# probes) on purpose. Add env vars / secretKeyRefs here only once the
-# app actually needs them, mirroring ticket-hub-api's env block as a
-# reference shape when that day comes.
+# All 9 env vars mirror the table in pcbox-api's README.md and are
+# validated as mandatory by src/common/config/env.validation.ts — the Pod
+# fails fast at boot if any is missing or malformed.
+#
+# `pcbox-db-credentials` and the `pcbox-db` Service are assumed to
+# already exist (owned by pcbox-db's own setup, see pcbox-api's
+# documentation/pcbox.pcbox-db-deploy.md). `pcbox-api-admin-credentials`
+# and `pcbox-ssh-key` are created by hand per
+# documentation/pcbox.administrations-deploy.md.
 #
 # Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
 # with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
-# tag before `kubectl apply`.
+# tag before `kubectl apply`. PCBOX_SSH_HOST_VALUE/PCBOX_SSH_USER_VALUE are
+# a second pair of placeholders, substituted the same way from the same
+# secrets.SSH_HOST/secrets.SSH_USER CI already uses to reach this server
+# directly (see pcbox.bootstrap.md) — never committed as a literal here.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,21 +38,46 @@ spec:
           ports:
             - containerPort: 3000
           env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: pcbox-db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pcbox-db-credentials
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_HOST
+              value: pcbox-db.pcbox-api.svc.cluster.local
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: pcbox-db
             - name: PORT
               value: "3000"
-          # HTTP, not TCP: unlike ticket-hub-api, this app's default
-          # NestJS scaffold DOES expose GET / (returns "Hello World!",
-          # 200 OK), so an httpGet probe on "/" is a real readiness
-          # check instead of a bare TCP connect.
+            - name: LOG_LEVEL
+              value: "info"
+            - name: ADMIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pcbox-api-admin-credentials
+                  key: ADMIN_API_KEY
+            - name: PCBOX_SSH_HOST
+              value: PCBOX_SSH_HOST_VALUE
+            - name: PCBOX_SSH_USER
+              value: PCBOX_SSH_USER_VALUE
+          # TCP, not HTTP: this app exposes no GET route at "/" (only
+          # POST /pcbox, guarded by AdminApiKeyGuard), so an httpGet probe
+          # on "/" would 404 forever and the Pod would never go Ready —
+          # same reasoning as ticket-hub-api's own probes.
           readinessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 20
@@ -56,3 +88,15 @@ spec:
             limits:
               cpu: 250m
               memory: 256Mi
+          # Private SSH key AnsibleService uses to run playbooks against
+          # the real pcbox server — mounted as a read-only file, never an
+          # env var (see pcbox-api's documentation/pcbox.administrations-deploy.md).
+          volumeMounts:
+            - name: ssh-key
+              mountPath: /etc/ssh-keys
+              readOnly: true
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: pcbox-ssh-key
+            defaultMode: 0400

@@ -64,6 +64,12 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: .github/scripts/substitute-manifest-placeholders.sh "$DOCKERHUB_USERNAME" "$IMAGE_TAG" "$WORK_DIR/deployment.yaml"
 
+      - name: Replace the pcbox SSH host/user placeholders in the manifests.
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: .github/scripts/substitute-pcbox-ssh-placeholders.sh "$SSH_HOST" "$SSH_USER" "$WORK_DIR/deployment.yaml"
+
       - name: Apply the manifests to the microk8s cluster.
         run: kubectl apply -f "$WORK_DIR/"
 

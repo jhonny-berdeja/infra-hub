@@ -19,12 +19,6 @@ jobs:
   deploy:
     name: Deploy ticket-hub-api to pcbox microk8s.
     runs-on: ubuntu-latest
-    # Approval gate: both callers (the automated dispatch from
-    # ticket-hub-api and a manual run) arrive as workflow_dispatch and
-    # pause here in "Waiting" until a required reviewer on the production
-    # Environment approves. No kubectl command in this job runs before
-    # that approval.
-    environment: production
     steps:
       - name: Clone the repository to access the manifests and scripts.
         uses: actions/checkout@v4

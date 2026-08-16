@@ -19,16 +19,6 @@ jobs:
   deploy:
     name: Deploy pcbox-api to pcbox microk8s.
     runs-on: ubuntu-latest
-    # No approval gate here on purpose: the one gate for a pcbox-api
-    # deploy is release-pcbox-api.yml's own "production" Environment, in
-    # the pcbox-api repo, on the approve-and-deploy job that dispatches
-    # this workflow. Once that's approved, this job runs straight through
-    # — a second required-reviewer pause here would just be the same
-    # human clicking approve twice for one deploy. A manual run of this
-    # workflow (workflow_dispatch fired directly in infra-hub, bypassing
-    # pcbox-api) is NOT gated by anything — anyone who can dispatch a
-    # workflow in this repo can already push to its manifests, so this
-    # adds no real protection over that.
     steps:
       - name: Clone the repository to access the manifests and scripts.
         uses: actions/checkout@v4

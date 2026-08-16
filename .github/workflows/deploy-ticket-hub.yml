@@ -19,7 +19,6 @@ jobs:
   deploy:
     name: Deploy ticket-hub to pcbox microk8s.
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: Clone the repository to access the manifests and scripts.
         uses: actions/checkout@v4

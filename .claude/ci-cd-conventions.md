@@ -278,3 +278,22 @@ estética:
    jamás tiene el token de Tailscale ni el kubeconfig del cluster.
 
 En una frase: **build vive con el código, deploy vive centralizado.**
+
+## Mantener sincronizada la documentación de secrets
+
+`.github/workflows/.env.secrets.example` y `.github/workflows/obtain-secrets.md`
+son la referencia de qué secrets usan los workflows y cómo conseguirlos.
+Se desactualizan solos si un cambio a un workflow no los toca en el mismo PR.
+
+1. **Agregar un `secrets.ALGO` nuevo a cualquier workflow de este
+   directorio implica, en el mismo cambio:**
+   - Sumar la entrada correspondiente a `.env.secrets.example`, con el
+     comentario indicando en qué workflow(s) se usa.
+   - Sumar una sección a `obtain-secrets.md` explicando cómo obtener ese
+     valor y dónde guardarlo.
+2. **Sacar un `secrets.ALGO` de todos los workflows que lo usaban implica
+   borrar su entrada de ambos archivos** — no dejar documentación de un
+   secret que ya no hace falta.
+3. **Renombrar un secret o agregarlo a un workflow adicional** actualiza
+   el comentario de "Used by" en `.env.secrets.example` para que siga
+   reflejando la lista real de workflows que lo usan.

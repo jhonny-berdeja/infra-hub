@@ -114,6 +114,21 @@ data:
       application_id INTEGER NOT NULL REFERENCES apps_applications(id),
       role_id INTEGER NOT NULL REFERENCES apps_roles(id)
     );
+
+    CREATE TABLE internal_users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(15) NOT NULL,
+      lastname VARCHAR(15) NOT NULL,
+      email VARCHAR(30) NOT NULL UNIQUE,
+      password VARCHAR(60) NOT NULL
+    );
+
+    CREATE TABLE internal_users_roles (
+      id SERIAL PRIMARY KEY,
+      internal_user_id INTEGER NOT NULL REFERENCES internal_users(id),
+      application_id INTEGER NOT NULL REFERENCES apps_applications(id),
+      role_id INTEGER NOT NULL REFERENCES apps_roles(id)
+    );
 ```
 
 ```bash
@@ -162,6 +177,28 @@ microk8s kubectl apply -f ~/auth-db-init.yaml
 >   razonamiento que `pcbox-db.administrations` — no hay ningún caso de
 >   fila parcial que representar, a diferencia de
 >   `ticket-hub-db.tickets.assignee`).
+> - `internal_users` guarda a los usuarios humanos del ecosistema (a
+>   diferencia de `apps_users`, que son clientes OAuth-style, no
+>   personas). `email` es `UNIQUE` por el mismo motivo que `cliente_id`
+>   en `apps_users`: es el campo por el que se busca la fila al hacer
+>   login.
+> - `internal_users.name`/`lastname` son `VARCHAR(15)` cada uno — mismo
+>   ancho exacto que `ticket-hub-db.users.name`/`lastname` (ver
+>   `pcbox-api/documentation/pcbox.ticket-hub-db-deploy.md`), el
+>   precedente ya establecido en el ecosistema para nombre/apellido de una
+>   persona humana.
+> - `internal_users.password` es `VARCHAR(60)`, igual ancho y mismo
+>   motivo que `apps_users.cliente_secret`: guarda el hash bcrypt, nunca
+>   el password en texto plano — los digests de bcrypt siempre miden
+>   exactamente 60 caracteres.
+> - `internal_users_roles` es al `internal_users` lo que `apps_users_roles`
+>   es a `apps_users` — mismo shape, mismas razones: FKs con `REFERENCES`
+>   hacia `internal_users`/`apps_applications`/`apps_roles`, y
+>   `application_id` **desnormalizado intencionalmente** (duplica
+>   `apps_roles.application_id` del `role_id` de la fila, sin garantía a
+>   nivel DB — el código que inserta es responsable de copiarlo
+>   correctamente, mismo caveat que `apps_users_roles.application_id`
+>   arriba).
 
 ## 5. Crear el volumen persistente, el Deployment y el Service
 
@@ -263,14 +300,14 @@ arranque (confirma que `init.sql` corrió):
 microk8s kubectl logs -n auth-api deployment/auth-db
 ```
 
-Confirmá que se crearon las cuatro tablas:
+Confirmá que se crearon las seis tablas:
 
 ```bash
 microk8s kubectl exec -it -n auth-api deployment/auth-db -- psql -U usuario_db -d auth-db -c '\dt'
 ```
 
-Debería listar `apps_applications`, `apps_users`, `apps_roles` y
-`apps_users_roles`.
+Debería listar `apps_applications`, `apps_users`, `apps_roles`,
+`apps_users_roles`, `internal_users` e `internal_users_roles`.
 
 ```bash
 microk8s kubectl exec -it -n auth-api deployment/auth-db -- psql -U usuario_db -d auth-db -c '\d apps_users'
@@ -324,4 +361,4 @@ falta) una vez que todas las filas tengan un valor.
 |---|---|---|---|
 | Secret `auth-db-credentials` (namespace `auth-api`) | `POSTGRES_USER`/`POSTGRES_PASSWORD` para `auth-db` | Paso 3 (creado con `kubectl create secret`, editable después desde el Dashboard) | Credenciales de conexión; cualquier rotación se hace editando este Secret desde el Dashboard, no por SSH |
 | Host interno `auth-db.auth-api.svc.cluster.local:5432` | DNS interno del cluster que apunta al Service de la base de datos | Paso 5 (`Service` `auth-db`) | Cadena de conexión que `auth-api` (`DATABASE_HOST`) usa para llegar a Postgres |
-| Tablas `apps_applications`, `apps_users`, `apps_roles`, `apps_users_roles` | El esquema de `auth-db` | Paso 4 (`ConfigMap` `auth-db-init`, aplicado por el mecanismo `docker-entrypoint-initdb.d` de la imagen de Postgres) | Almacenamiento para `ApplicationEntity`/`AppUserEntity`/`RoleEntity`/`UserRoleEntity` de `auth-api` (`synchronize: false` — este DDL es la única fuente de verdad del esquema) |
+| Tablas `apps_applications`, `apps_users`, `apps_roles`, `apps_users_roles`, `internal_users`, `internal_users_roles` | El esquema de `auth-db` | Paso 4 (`ConfigMap` `auth-db-init`, aplicado por el mecanismo `docker-entrypoint-initdb.d` de la imagen de Postgres) | Almacenamiento para `ApplicationEntity`/`AppUserEntity`/`RoleEntity`/`UserRoleEntity`/`InternalUserEntity`/`InternalUserRoleEntity` de `auth-api` (`synchronize: false` — este DDL es la única fuente de verdad del esquema) |

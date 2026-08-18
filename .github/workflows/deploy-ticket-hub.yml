@@ -16,8 +16,36 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate secrets before anything else runs.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the repository to access the scripts.
+        uses: actions/checkout@v4
+
+      - name: Assert the DOCKERHUB_USERNAME secret is set.
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: .github/scripts/assert-secret-is-set.sh DOCKERHUB_USERNAME "$DOCKERHUB_USERNAME"
+
+      - name: Assert the KUBECONFIG_PCBOX secret is set.
+        env:
+          KUBECONFIG_PCBOX: ${{ secrets.KUBECONFIG_PCBOX }}
+        run: .github/scripts/assert-secret-is-set.sh KUBECONFIG_PCBOX "$KUBECONFIG_PCBOX"
+
+      - name: Assert the TS_OAUTH_CLIENT_ID secret is set.
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+        run: .github/scripts/assert-secret-is-set.sh TS_OAUTH_CLIENT_ID "$TS_OAUTH_CLIENT_ID"
+
+      - name: Assert the TS_OAUTH_SECRET secret is set.
+        env:
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+        run: .github/scripts/assert-secret-is-set.sh TS_OAUTH_SECRET "$TS_OAUTH_SECRET"
+
   deploy:
     name: Deploy ticket-hub to pcbox microk8s.
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Clone the repository to access the manifests and scripts.

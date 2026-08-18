@@ -58,6 +58,14 @@ spec:
                 secretKeyRef:
                   name: ticket-hub-api-credentials
                   key: JWT_SECRET
+            # In-cluster URL of auth-api (different namespace, reachable
+            # cross-namespace by its FQDN). JwksClientService polls
+            # ${AUTH_API_URL}/.well-known/jwks.json every 5 minutes to
+            # refresh the RS256 key JwtAuthGuard verifies every token
+            # against -- this app no longer trusts its own JWT_SECRET for
+            # verification, only for AuthService's now-dead signing call.
+            - name: AUTH_API_URL
+              value: http://auth-api.auth-api.svc.cluster.local:3000
             - name: PORT
               value: "3000"
             - name: LOG_LEVEL

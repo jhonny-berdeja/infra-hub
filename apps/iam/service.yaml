@@ -6,7 +6,12 @@ metadata:
 spec:
   selector:
     app: iam
+  # NodePort: this is the app the user opens in a browser from their
+  # client PC, so it needs to be reachable from outside the cluster over
+  # Tailscale. nodePort is pinned (not auto-assigned) so the URL stays
+  # stable across redeploys.
   ports:
     - port: 3000
       targetPort: 3000
-  type: ClusterIP
+      nodePort: 30302
+  type: NodePort

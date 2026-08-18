@@ -1,9 +1,9 @@
-# The frontend runs as a Pod in the same cluster/namespace as auth-api, so
+# The frontend runs as a Pod in the same cluster/namespace as iam-api, so
 # its Route Handlers (app/api/**/route.ts) reach the backend over the
 # in-cluster ClusterIP DNS name, not any path a client outside the cluster
-# would use. Shares the `auth-api` namespace (not a dedicated `iam`
+# would use. Shares the `iam-api` namespace (not a dedicated `iam`
 # namespace) because that namespace already exists and is documented in
-# infra-hub/databases/auth-db.md — same principle as ticket-hub/
+# infra-hub/databases/iam-db.md — same principle as ticket-hub/
 # ticket-hub-api sharing one namespace, just named after the backend here
 # instead of the frontend.
 #
@@ -11,7 +11,7 @@
 # this app — same reasoning as ticket-hub's own deployment.yaml.
 #
 # `iam-credentials` is assumed to already exist — created from
-# secret.example.yaml, same pattern as auth-api-credentials.
+# secret.example.yaml, same pattern as iam-api-credentials.
 #
 # Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
 # with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
@@ -20,7 +20,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: iam
-  namespace: auth-api
+  namespace: iam-api
   labels:
     app: iam
 spec:
@@ -41,7 +41,7 @@ spec:
             - containerPort: 3000
           env:
             - name: AUTH_API_URL
-              value: http://auth-api.auth-api.svc.cluster.local:3000
+              value: http://iam-api.iam-api.svc.cluster.local:3000
             - name: IAM_COOKIE_SECURE
               value: "false"
             - name: IAM_APPLICATION_NAME

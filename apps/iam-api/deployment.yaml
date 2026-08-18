@@ -1,0 +1,89 @@
+# All 9 env vars mirror src/common/config/env.validation.ts in iam-api —
+# the Pod fails fast at boot if any is missing or malformed.
+#
+# `iam-db-credentials` and the `iam-db` Service are assumed to already
+# exist (owned by iam-db's own setup — see infra-hub/databases/iam-db.md).
+# `iam-api-credentials` is created from secret.example.yaml — see this
+# app's usage in this repo's README.md.
+#
+# Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
+# with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
+# tag before `kubectl apply`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iam-api
+  namespace: iam-api
+  labels:
+    app: iam-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iam-api
+  template:
+    metadata:
+      labels:
+        app: iam-api
+    spec:
+      containers:
+        - name: iam-api
+          image: docker.io/DOCKERHUB_USER/iam-api:IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: iam-db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: iam-db-credentials
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_HOST
+              value: iam-db.iam-api.svc.cluster.local
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: iam-db
+            - name: JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: iam-api-credentials
+                  key: JWT_PRIVATE_KEY
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: iam-api-credentials
+                  key: JWT_PUBLIC_KEY
+            - name: JWT_EXPIRES_IN
+              value: "1h"
+            - name: PORT
+              value: "3000"
+            - name: LOG_LEVEL
+              value: "info"
+          # TCP, not HTTP: the app exposes no GET route at "/" (only
+          # feature routes under /applications, /apps-users, /roles,
+          # /internal-users), so an httpGet probe on "/" would 404 forever
+          # and the Pod would never go Ready. Same reasoning as
+          # ticket-hub-api's own deployment.yaml.
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

@@ -11,13 +11,14 @@ Primero, las bases de datos:
 1. [`databases/ticket-hub-db.md`](./databases/ticket-hub-db.md) — deploy de la base de datos `ticket-hub-db` en microk8s. Es la plantilla que siguen las otras dos, y la que habilita el addon `hostpath-storage` que las tres necesitan.
 2. [`databases/pcbox-db.md`](./databases/pcbox-db.md) — deploy de la base de datos `pcbox-db` (tabla `administrations`) en microk8s, namespace `pcbox-api`.
 3. [`databases/auth-db.md`](./databases/auth-db.md) — deploy de la base de datos `auth-db` en microk8s, namespace `auth-api`.
+4. [`databases/iam-db.md`](./databases/iam-db.md) — deploy de la base de datos `iam-db` en microk8s, namespace `iam-api`.
 
 Después, Grafana:
 
-4. [`grafana/deploy.md`](./grafana/deploy.md) — deploy de Grafana en microk8s, con sus dashboards y credenciales de admin en un Secret.
+5. [`grafana/deploy.md`](./grafana/deploy.md) — deploy de Grafana en microk8s, con sus dashboards y credenciales de admin en un Secret.
 
 Por último, Loki:
 
-5. [`loki/deploy.md`](./loki/deploy.md) — deploy de Loki + Promtail en microk8s, y cómo agregar Loki como datasource en el Grafana ya desplegado. Al terminar, los logs de cualquier Pod del cluster quedan consultables desde Grafana.
+6. [`loki/deploy.md`](./loki/deploy.md) — deploy de Loki + Promtail en microk8s, y cómo agregar Loki como datasource en el Grafana ya desplegado. Al terminar, los logs de cualquier Pod del cluster quedan consultables desde Grafana.
 
 Con eso, la infraestructura del cluster ya queda montada. Lo que falta para tener cada app corriendo (su propio Deployment/Service) es el pipeline de CI/CD de cada repo de app — ver `.claude/infra/ci-cd-conventions.md` en `jtagram`.

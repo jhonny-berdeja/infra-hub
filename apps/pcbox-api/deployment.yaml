@@ -1,12 +1,15 @@
-# All 9 env vars mirror the table in pcbox-api's README.md and are
+# All env vars mirror the table in pcbox-api's README.md and are
 # validated as mandatory by src/common/config/env.validation.ts — the Pod
 # fails fast at boot if any is missing or malformed.
 #
 # `pcbox-db-credentials` and the `pcbox-db` Service are assumed to
 # already exist (owned by pcbox-db's own setup, see pcbox-api's
-# documentation/pcbox.pcbox-db-deploy.md). `pcbox-api-admin-credentials`
-# and `pcbox-ssh-key` are created by hand per
-# documentation/pcbox.administrations-deploy.md.
+# documentation/pcbox.pcbox-db-deploy.md). `pcbox-ssh-key` is created by
+# hand per documentation/pcbox.administrations-deploy.md.
+#
+# No more `pcbox-api-admin-credentials` Secret / ADMIN_API_KEY -- this
+# app verifies callers via auth-api's JWKS now (AUTH_API_URL), not a
+# shared secret. See src/modules/auth/'s history.
 #
 # Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
 # with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
@@ -58,19 +61,16 @@ spec:
               value: "3000"
             - name: LOG_LEVEL
               value: "info"
-            - name: ADMIN_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: pcbox-api-admin-credentials
-                  key: ADMIN_API_KEY
+            - name: AUTH_API_URL
+              value: http://auth-api.auth-api.svc.cluster.local:3000
             - name: PCBOX_SSH_HOST
               value: PCBOX_SSH_HOST_VALUE
             - name: PCBOX_SSH_USER
               value: PCBOX_SSH_USER_VALUE
           # TCP, not HTTP: this app exposes no GET route at "/" (only
-          # POST /pcbox, guarded by AdminApiKeyGuard), so an httpGet probe
-          # on "/" would 404 forever and the Pod would never go Ready —
-          # same reasoning as ticket-hub-api's own probes.
+          # POST /pcbox, guarded by JwtAuthGuard/RolesGuard), so an
+          # httpGet probe on "/" would 404 forever and the Pod would
+          # never go Ready — same reasoning as ticket-hub-api's own probes.
           readinessProbe:
             tcpSocket:
               port: 3000

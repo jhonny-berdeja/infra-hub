@@ -5,8 +5,10 @@
 # `ticket-hub-db-credentials` and the `ticket-hub-db` Service are assumed
 # to already exist (owned by ticket-hub-db's own setup, not this repo).
 # `pcbox-api-notification-credentials` is created by hand per pcbox-api's
-# own documentation/pcbox.ticket-hub-db-deploy.md, step 9 — its
-# PCBOX_API_ADMIN_KEY must match pcbox-api's own ADMIN_API_KEY exactly.
+# own documentation/pcbox.ticket-hub-db-deploy.md, step 9 — it now holds
+# the apps-user credentials this app logs into auth-api with before
+# calling pcbox-api (PCBOX_API_CLIENT_ID/PCBOX_API_CLIENT_SECRET), not a
+# shared key with pcbox-api directly anymore.
 #
 # No `ticket-hub-api-credentials` Secret anymore -- it only ever held
 # JWT_SECRET, unused now that this app verifies tokens via auth-api's
@@ -69,13 +71,24 @@ spec:
               value: "info"
             - name: PCBOX_API_URL
               value: http://pcbox-api.pcbox-api.svc.cluster.local:3000
-            - name: PCBOX_API_ADMIN_KEY
+            # The application PcboxApiConnector logs into on auth-api
+            # before calling pcbox-api -- must match pcbox-api's own
+            # registered application name in auth-api (see the data
+            # migration in iam).
+            - name: PCBOX_API_APPLICATION_NAME
+              value: pcbox-api
+            - name: PCBOX_API_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: pcbox-api-notification-credentials
-                  key: PCBOX_API_ADMIN_KEY
+                  key: PCBOX_API_CLIENT_ID
+            - name: PCBOX_API_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pcbox-api-notification-credentials
+                  key: PCBOX_API_CLIENT_SECRET
           # TCP, not HTTP: the app exposes no GET route at "/" (only
-          # POST /users and POST /auth/login), so an httpGet probe on "/"
+          # POST /tickets and GET /auth/me), so an httpGet probe on "/"
           # would 404 forever and the Pod would never go Ready.
           readinessProbe:
             tcpSocket:

@@ -1,14 +1,16 @@
-# All 10 env vars mirror the table in ticket-hub-api's README.md and are
+# All env vars mirror the table in ticket-hub-api's README.md and are
 # validated as mandatory by src/common/config/env.validation.ts — the Pod
 # fails fast at boot if any is missing or malformed.
 #
 # `ticket-hub-db-credentials` and the `ticket-hub-db` Service are assumed
 # to already exist (owned by ticket-hub-db's own setup, not this repo).
-# `ticket-hub-api-credentials` is created from secret.example.yaml — see
-# apps/ticket-hub-api's usage in this repo's README.md.
 # `pcbox-api-notification-credentials` is created by hand per pcbox-api's
 # own documentation/pcbox.ticket-hub-db-deploy.md, step 9 — its
 # PCBOX_API_ADMIN_KEY must match pcbox-api's own ADMIN_API_KEY exactly.
+#
+# No `ticket-hub-api-credentials` Secret anymore -- it only ever held
+# JWT_SECRET, unused now that this app verifies tokens via auth-api's
+# JWKS instead of signing/verifying its own (see AUTH_API_URL below).
 #
 # Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
 # with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
@@ -53,17 +55,12 @@ spec:
               value: "5432"
             - name: DATABASE_NAME
               value: ticket-hub-db
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: ticket-hub-api-credentials
-                  key: JWT_SECRET
             # In-cluster URL of auth-api (different namespace, reachable
             # cross-namespace by its FQDN). JwksClientService polls
             # ${AUTH_API_URL}/.well-known/jwks.json every 5 minutes to
             # refresh the RS256 key JwtAuthGuard verifies every token
-            # against -- this app no longer trusts its own JWT_SECRET for
-            # verification, only for AuthService's now-dead signing call.
+            # against -- this app signs and verifies nothing of its own
+            # anymore.
             - name: AUTH_API_URL
               value: http://auth-api.auth-api.svc.cluster.local:3000
             - name: PORT

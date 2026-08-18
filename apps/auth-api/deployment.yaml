@@ -49,11 +49,16 @@ spec:
               value: "5432"
             - name: DATABASE_NAME
               value: auth-db
-            - name: JWT_SECRET
+            - name: JWT_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
                   name: auth-api-credentials
-                  key: JWT_SECRET
+                  key: JWT_PRIVATE_KEY
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auth-api-credentials
+                  key: JWT_PUBLIC_KEY
             - name: JWT_EXPIRES_IN
               value: "1h"
             - name: PORT

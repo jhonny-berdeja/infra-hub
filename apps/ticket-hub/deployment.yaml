@@ -1,12 +1,21 @@
 # The frontend runs as a Pod in the same cluster as ticket-hub-api, so
-# its Route Handler (app/api/login/route.ts) reaches the backend over the
-# in-cluster ClusterIP DNS name, not the NodePort/Tailscale path a client
-# outside the cluster has to use.
+# its Route Handlers reach both backends over in-cluster ClusterIP DNS
+# names, not the NodePort/Tailscale path a client outside the cluster
+# has to use.
+#
+# app/api/login/route.ts authenticates against auth-api now, not
+# ticket-hub-api (which has no login of its own anymore -- see its
+# history): AUTH_API_URL + TICKET_HUB_APPLICATION_NAME are for that.
+# TICKET_HUB_API_URL is still used by every other Route Handler
+# (tickets, me) to reach ticket-hub-api directly.
 #
 # TICKET_HUB_COOKIE_SECURE is "false": no Ingress/TLS termination is set
 # up for this app (see ticket-hub-api's deploy for the same reasoning) -
 # hardcoding secure:true over plain HTTP would silently drop the login
 # cookie.
+#
+# `ticket-hub-credentials` is assumed to already exist -- created from
+# secret.example.yaml, same pattern as auth-api-credentials/iam-credentials.
 #
 # Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
 # with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
@@ -37,8 +46,15 @@ spec:
           env:
             - name: TICKET_HUB_API_URL
               value: http://ticket-hub-api.ticket-hub.svc.cluster.local:3000
+            - name: AUTH_API_URL
+              value: http://auth-api.auth-api.svc.cluster.local:3000
             - name: TICKET_HUB_COOKIE_SECURE
               value: "false"
+            - name: TICKET_HUB_APPLICATION_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: ticket-hub-credentials
+                  key: TICKET_HUB_APPLICATION_NAME
           readinessProbe:
             httpGet:
               path: /login

@@ -4,8 +4,8 @@
 #
 # `ticket-hub-db-credentials` and the `ticket-hub-db` Service are assumed
 # to already exist (owned by ticket-hub-db's own setup, not this repo).
-# `pcbox-api-notification-credentials` is created by hand per pcbox-api's
-# own documentation/pcbox.ticket-hub-db-deploy.md, step 9 — it now holds
+# `pcbox-api-notification-credentials` is created by hand per this repo's
+# own databases/ticket-hub-db.md, step 9 — it now holds
 # the apps-user credentials this app logs into auth-api with before
 # calling pcbox-api (PCBOX_API_CLIENT_ID/PCBOX_API_CLIENT_SECRET), not a
 # shared key with pcbox-api directly anymore.

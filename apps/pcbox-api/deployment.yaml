@@ -3,8 +3,8 @@
 # fails fast at boot if any is missing or malformed.
 #
 # `pcbox-db-credentials` and the `pcbox-db` Service are assumed to
-# already exist (owned by pcbox-db's own setup, see pcbox-api's
-# documentation/pcbox.pcbox-db-deploy.md). `pcbox-ssh-key` is created by
+# already exist (owned by pcbox-db's own setup, see databases/pcbox-db.md
+# in this repo). `pcbox-ssh-key` is created by
 # hand per documentation/pcbox.administrations-deploy.md.
 #
 # No more `pcbox-api-admin-credentials` Secret / ADMIN_API_KEY -- this

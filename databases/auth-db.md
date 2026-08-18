@@ -1,21 +1,25 @@
 # Despliegue de la base de datos `auth-db` en microk8s (servidor pcbox)
 
 Motor: **PostgreSQL**, mismo criterio que `ticket-hub-db`/`pcbox-db` (ver
-`pcbox-api/documentation/pcbox.ticket-hub-db-deploy.md`, la plantilla que
+`ticket-hub-db.md`, la plantilla que
 sigue este documento). Corre como un Pod dentro del cluster de microk8s, con
 sus datos en un volumen persistente y sus credenciales en un Secret de
 Kubernetes.
 
 Mismo patrón que `pcbox-db`: `auth-db` comparte su namespace (`auth-api`)
 con la propia app `auth-api`, en lugar de tener su propio namespace
-dedicado como sí lo tienen `ticket-hub-db`/`ticket-hub`. Este documento vive
-en `infra-hub` (no en el repo propio de `auth-api`) porque, a diferencia de
-`ticket-hub-api`/`pcbox-api`, el doc de aprovisionamiento de la base de
-`auth-api` todavía no tiene una carpeta `documentation/` equivalente propia
-— `infra-hub` es donde ya viven los manifiestos de Kubernetes de todas las
-apps (`apps/<name>/`), así que este es el lugar más cercano para el doc de
-infra de un servicio nuevo hasta que (o a menos que) `auth-api` desarrolle
-su propia carpeta `documentation/` siguiendo el ejemplo de `pcbox-api`.
+dedicado como sí lo tienen `ticket-hub-db`/`ticket-hub`. Los tres documentos
+de aprovisionamiento de base de datos del ecosistema (`auth-db.md`,
+`pcbox-db.md`, `ticket-hub-db.md`) están centralizados acá, en
+`infra-hub/databases/`, en vez de vivir cada uno en la carpeta
+`documentation/` de su propio repo de app — mismo motivo de gobernanza por
+el que los manifiestos de Kubernetes de cada app viven centralizados en
+`infra-hub/apps/<name>/` en lugar de estar dispersos por los repos de cada
+app (ver `jtagram/.claude/infra/ci-cd-conventions.md`, sección "Por qué los
+manifests de Kubernetes no viven en el repo de la app"): separa quién puede
+tocar el aprovisionamiento de infraestructura de quién trabaja el código de
+la app día a día, bajo la misma gobernanza (`CODEOWNERS` + branch
+protection) que ya rige el resto de `infra-hub`.
 
 No hay ningún paso de migración con la CLI de TypeORM en todo este flujo —
 `auth-api`, igual que `ticket-hub-api`/`pcbox-api`, corre con
@@ -200,7 +204,7 @@ microk8s kubectl apply -f ~/auth-db-init.yaml
 >   login.
 > - `internal_users.name`/`lastname` son `VARCHAR(15)` cada uno — mismo
 >   ancho exacto que `ticket-hub-db.users.name`/`lastname` (ver
->   `pcbox-api/documentation/pcbox.ticket-hub-db-deploy.md`), el
+>   `ticket-hub-db.md`), el
 >   precedente ya establecido en el ecosistema para nombre/apellido de una
 >   persona humana.
 > - `internal_users.password` es `VARCHAR(60)`, igual ancho y mismo
@@ -359,7 +363,7 @@ contraseña del Secret `auth-db-credentials`.
 Esta app todavía no tiene cambios de esquema, pero si alguna vez se
 necesita uno después de que esta base de datos ya esté en producción,
 seguí exactamente el precedente de `ticket-hub-db` (ver
-`pcbox-api/documentation/pcbox.ticket-hub-db-deploy.md`, paso 7): el
+`ticket-hub-db.md`, paso 7): el
 ConfigMap `init.sql` del paso 4 de arriba **no** se vuelve a ejecutar
 contra un volumen que ya tiene datos, así que cualquier cambio posterior se
 aplica a mano, una sola vez, con `ALTER TABLE`:

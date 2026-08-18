@@ -4,7 +4,7 @@ Este proyecto es para todo lo que tiene que ver con Kubernetes del ecosistema `j
 
 ## Cómo montar el ecosistema
 
-Esta guía asume que el servidor y microk8s ya están listos — ver `pcbox-api/README.md` (pasos 1 y 2: bootstrap del servidor e instalación de microk8s). A partir de ahí, seguir estos documentos, en este orden:
+Esta guía asume que ya se resolvió [¿Cómo configuro un servidor nuevo desde cero?](https://github.com/jhonny-berdeja/pcbox-api#cómo-configuro-un-servidor-nuevo-desde-cero) de `pcbox-api`. A partir de ahí, seguir estos documentos, en este orden:
 
 Primero, las bases de datos:
 

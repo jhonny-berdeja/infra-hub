@@ -108,11 +108,19 @@ data:
       description VARCHAR(200) NOT NULL
     );
 
+    CREATE TABLE apps_users_applications (
+      id SERIAL PRIMARY KEY,
+      app_user_id INTEGER NOT NULL REFERENCES apps_users(id),
+      application_id INTEGER NOT NULL REFERENCES apps_applications(id),
+      UNIQUE (app_user_id, application_id)
+    );
+
     CREATE TABLE apps_users_roles (
       id SERIAL PRIMARY KEY,
       app_user_id INTEGER NOT NULL REFERENCES apps_users(id),
       application_id INTEGER NOT NULL REFERENCES apps_applications(id),
-      role_id INTEGER NOT NULL REFERENCES apps_roles(id)
+      role_id INTEGER NOT NULL REFERENCES apps_roles(id),
+      UNIQUE (app_user_id, role_id)
     );
 
     CREATE TABLE internal_users (
@@ -123,11 +131,19 @@ data:
       password VARCHAR(60) NOT NULL
     );
 
+    CREATE TABLE internal_users_applications (
+      id SERIAL PRIMARY KEY,
+      internal_user_id INTEGER NOT NULL REFERENCES internal_users(id),
+      application_id INTEGER NOT NULL REFERENCES apps_applications(id),
+      UNIQUE (internal_user_id, application_id)
+    );
+
     CREATE TABLE internal_users_roles (
       id SERIAL PRIMARY KEY,
       internal_user_id INTEGER NOT NULL REFERENCES internal_users(id),
       application_id INTEGER NOT NULL REFERENCES apps_applications(id),
-      role_id INTEGER NOT NULL REFERENCES apps_roles(id)
+      role_id INTEGER NOT NULL REFERENCES apps_roles(id),
+      UNIQUE (internal_user_id, role_id)
     );
 ```
 
@@ -199,6 +215,22 @@ microk8s kubectl apply -f ~/auth-db-init.yaml
 >   nivel DB — el código que inserta es responsable de copiarlo
 >   correctamente, mismo caveat que `apps_users_roles.application_id`
 >   arriba).
+> - `apps_users_applications`/`internal_users_applications` son tablas
+>   nuevas, separadas de `apps_users_roles`/`internal_users_roles`: un
+>   usuario puede tener **acceso a una aplicación** sin todavía tener
+>   ningún rol asignado ahí — son dos gestiones distintas sobre el
+>   usuario. No podían vivir en la misma tabla que los roles porque
+>   `apps_users_roles.role_id`/`internal_users_roles.role_id` son
+>   `NOT NULL`: no hay forma de representar "tiene acceso, sin rol
+>   todavía" en esa tabla.
+> - `UNIQUE (app_user_id, application_id)` /
+>   `UNIQUE (internal_user_id, application_id)` en las tablas de acceso, y
+>   `UNIQUE (app_user_id, role_id)` / `UNIQUE (internal_user_id, role_id)`
+>   en las de roles: evitan asignar la misma aplicación o el mismo rol dos
+>   veces al mismo usuario. En la de roles alcanza con `(usuario, role_id)`
+>   — `application_id` ya está implícito en el rol (es su
+>   `apps_roles.application_id` copiado), no hace falta incluirlo en el
+>   `UNIQUE`.
 
 ## 5. Crear el volumen persistente, el Deployment y el Service
 
@@ -300,14 +332,15 @@ arranque (confirma que `init.sql` corrió):
 microk8s kubectl logs -n auth-api deployment/auth-db
 ```
 
-Confirmá que se crearon las seis tablas:
+Confirmá que se crearon las ocho tablas:
 
 ```bash
 microk8s kubectl exec -it -n auth-api deployment/auth-db -- psql -U usuario_db -d auth-db -c '\dt'
 ```
 
 Debería listar `apps_applications`, `apps_users`, `apps_roles`,
-`apps_users_roles`, `internal_users` e `internal_users_roles`.
+`apps_users_applications`, `apps_users_roles`, `internal_users`,
+`internal_users_applications` e `internal_users_roles`.
 
 ```bash
 microk8s kubectl exec -it -n auth-api deployment/auth-db -- psql -U usuario_db -d auth-db -c '\d apps_users'
@@ -361,4 +394,4 @@ falta) una vez que todas las filas tengan un valor.
 |---|---|---|---|
 | Secret `auth-db-credentials` (namespace `auth-api`) | `POSTGRES_USER`/`POSTGRES_PASSWORD` para `auth-db` | Paso 3 (creado con `kubectl create secret`, editable después desde el Dashboard) | Credenciales de conexión; cualquier rotación se hace editando este Secret desde el Dashboard, no por SSH |
 | Host interno `auth-db.auth-api.svc.cluster.local:5432` | DNS interno del cluster que apunta al Service de la base de datos | Paso 5 (`Service` `auth-db`) | Cadena de conexión que `auth-api` (`DATABASE_HOST`) usa para llegar a Postgres |
-| Tablas `apps_applications`, `apps_users`, `apps_roles`, `apps_users_roles`, `internal_users`, `internal_users_roles` | El esquema de `auth-db` | Paso 4 (`ConfigMap` `auth-db-init`, aplicado por el mecanismo `docker-entrypoint-initdb.d` de la imagen de Postgres) | Almacenamiento para `ApplicationEntity`/`AppUserEntity`/`RoleEntity`/`UserRoleEntity`/`InternalUserEntity`/`InternalUserRoleEntity` de `auth-api` (`synchronize: false` — este DDL es la única fuente de verdad del esquema) |
+| Tablas `apps_applications`, `apps_users`, `apps_roles`, `apps_users_applications`, `apps_users_roles`, `internal_users`, `internal_users_applications`, `internal_users_roles` | El esquema de `auth-db` | Paso 4 (`ConfigMap` `auth-db-init`, aplicado por el mecanismo `docker-entrypoint-initdb.d` de la imagen de Postgres) | Almacenamiento para `ApplicationEntity`/`AppUserEntity`/`RoleEntity`/`UserAppEntity`/`UserRoleEntity`/`InternalUserEntity`/`InternalUserAppEntity`/`InternalUserRoleEntity` de `auth-api` (`synchronize: false` — este DDL es la única fuente de verdad del esquema) |

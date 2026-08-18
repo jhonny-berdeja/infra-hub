@@ -11,7 +11,6 @@ Primero, las bases de datos:
 1. [`databases/ticket-hub-db.md`](./databases/ticket-hub-db.md) — deploy de la base de datos `ticket-hub-db` en microk8s. Es la plantilla que siguen las otras dos, y la que habilita el addon `hostpath-storage` que las tres necesitan.
 2. [`databases/pcbox-db.md`](./databases/pcbox-db.md) — deploy de la base de datos `pcbox-db` (tabla `administrations`) en microk8s, namespace `pcbox-api`.
 3. [`databases/auth-db.md`](./databases/auth-db.md) — deploy de la base de datos `auth-db` en microk8s, namespace `auth-api`.
-4. [`databases/iam-db.md`](./databases/iam-db.md) — deploy de la base de datos `iam-db` en microk8s, namespace `iam-api`.
 
 Después, Grafana:
 

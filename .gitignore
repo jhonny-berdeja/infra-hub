@@ -1,0 +1,3 @@
+# Real Kubernetes Secrets, generated from each app's secret.example.yaml.
+# Never commit these — see apps/<name>/secret.example.yaml for the template.
+apps/*/secret.yaml

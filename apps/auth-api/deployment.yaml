@@ -1,0 +1,84 @@
+# All 9 env vars mirror src/common/config/env.validation.ts in auth-api —
+# the Pod fails fast at boot if any is missing or malformed.
+#
+# `auth-db-credentials` and the `auth-db` Service are assumed to already
+# exist (owned by auth-db's own setup — see infra-hub/databases/auth-db.md).
+# `auth-api-credentials` is created from secret.example.yaml — see this
+# app's usage in this repo's README.md.
+#
+# Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
+# with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
+# tag before `kubectl apply`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-api
+  namespace: auth-api
+  labels:
+    app: auth-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-api
+  template:
+    metadata:
+      labels:
+        app: auth-api
+    spec:
+      containers:
+        - name: auth-api
+          image: docker.io/DOCKERHUB_USER/auth-api:IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: auth-db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auth-db-credentials
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_HOST
+              value: auth-db.auth-api.svc.cluster.local
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: auth-db
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: auth-api-credentials
+                  key: JWT_SECRET
+            - name: JWT_EXPIRES_IN
+              value: "1h"
+            - name: PORT
+              value: "3000"
+            - name: LOG_LEVEL
+              value: "info"
+          # TCP, not HTTP: the app exposes no GET route at "/" (only
+          # feature routes under /applications, /apps-users, /roles,
+          # /internal-users), so an httpGet probe on "/" would 404 forever
+          # and the Pod would never go Ready. Same reasoning as
+          # ticket-hub-api's own deployment.yaml.
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

@@ -1,0 +1,57 @@
+# The frontend runs as a Pod in the same cluster/namespace as auth-api, so
+# its Route Handlers (app/api/**/route.ts) reach the backend over the
+# in-cluster ClusterIP DNS name, not any path a client outside the cluster
+# would use. Shares the `auth-api` namespace (not a dedicated `iam`
+# namespace) because that namespace already exists and is documented in
+# infra-hub/databases/auth-db.md — same principle as ticket-hub/
+# ticket-hub-api sharing one namespace, just named after the backend here
+# instead of the frontend.
+#
+# Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
+# with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
+# tag before `kubectl apply`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iam
+  namespace: auth-api
+  labels:
+    app: iam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iam
+  template:
+    metadata:
+      labels:
+        app: iam
+    spec:
+      containers:
+        - name: iam
+          image: docker.io/DOCKERHUB_USER/iam:IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: AUTH_API_URL
+              value: http://auth-api.auth-api.svc.cluster.local:3000
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

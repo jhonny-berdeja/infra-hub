@@ -234,3 +234,41 @@ Verificar:
 
 `approver` debería listar `character varying(100)`, `informer`
 `character varying(30)`, ambos `not null`.
+
+## 8. Ensanchar `file_content` a `TEXT` (migración posterior)
+
+Cambio `manage-database-sql-ticket`: para un ticket `DATABASE`,
+`pcbox-api` genera el playbook (SQL entregado por `stdin`, ver
+`SqlPlaybookBuilder`) y lo persiste igual que hoy en `file_content` —
+pero ese playbook generado puede superar largo los 500 caracteres del
+`VARCHAR(500)` actual una vez que se le suma el SQL (hasta 5000
+caracteres) más el boilerplate YAML del `command.argv`/`stdin`. El
+esquema anterior (`VARCHAR(500)`) seguía siendo suficiente para el
+YAML escrito a mano de un ticket `ANSIBLE`, así que se ensancha la
+columna en vez de acotar el SQL a un tamaño que no alcanza.
+
+Conectado al contenedor y a `psql`, igual que en el paso 7:
+
+```bash
+microk8s kubectl exec -it -n pcbox-api deployment/pcbox-db -- \
+  psql -U usuario_db -d pcbox-db
+```
+
+```sql
+ALTER TABLE administrations ALTER COLUMN file_content TYPE TEXT;
+```
+
+Sigue `NOT NULL` — la columna no cambia de significado ("el playbook
+que realmente corrió"), solo deja de tener un tope acotado. `TEXT` en
+vez de un `VARCHAR(n)` mayor porque no hay un límite de negocio propio
+para el playbook ya generado (el límite real está en `sqlCode`, ya
+acotado a 5000 en `DatabaseActionDto` antes de llegar acá).
+
+Verificar:
+
+```sql
+\d administrations
+```
+
+`file_content` debería listar `text`, `not null` (sin longitud
+asociada — `TEXT` no la tiene).

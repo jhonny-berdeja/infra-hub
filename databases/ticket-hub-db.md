@@ -364,3 +364,62 @@ Verificar:
 Debería listar `assignee` como `character varying(100)` sin FK, e
 `informer` como `character varying(30)` sin `not null`. `\dt` ya no debería
 listar `users` ni `roles`.
+
+## 12. Ticket de ejecución SQL: `ticket_type` + columnas DATABASE (migración posterior)
+
+Cambio `manage-database-sql-ticket`: un ticket ahora puede ser `ANSIBLE`
+(el flujo existente, YAML escrito a mano) o `DATABASE` (SQL estructurado
+ejecutado contra un target de la allowlist de `pcbox-api` — ver
+`pcbox-api/.claude/CLAUDE.md` y `db-target.allowlist.ts`). `tickets`
+necesita el discriminador `ticket_type` más cinco columnas nuevas para el
+caso `DATABASE`, todas nullable porque solo aplican a ese tipo de ticket
+(mismo criterio "obligatorio para la app, no para la base" que ya usan
+`assignee`/`informer`/`code_ansible`).
+
+Conectado al contenedor y a `psql`, igual que en las migraciones
+anteriores:
+
+```bash
+microk8s kubectl exec -it -n ticket-hub deployment/ticket-hub-db -- bash
+psql -U "$POSTGRES_USER" -d ticket-hub-db
+```
+
+```sql
+ALTER TABLE tickets ADD COLUMN ticket_type VARCHAR(10);
+UPDATE tickets SET ticket_type = 'ANSIBLE' WHERE ticket_type IS NULL;
+ALTER TABLE tickets ALTER COLUMN ticket_type SET NOT NULL;
+
+ALTER TABLE tickets ADD COLUMN db_namespace   VARCHAR(63);
+ALTER TABLE tickets ADD COLUMN db_deployment  VARCHAR(63);
+ALTER TABLE tickets ADD COLUMN db_name        VARCHAR(63);
+ALTER TABLE tickets ADD COLUMN operation_type VARCHAR(10);
+ALTER TABLE tickets ADD COLUMN sql_code       VARCHAR(5000);
+```
+
+`ticket_type` sigue el mismo precedente de 3 pasos que `tickets.number`
+(paso 7 arriba): `ADD COLUMN` sin `NOT NULL` primero, `UPDATE` para
+backfillear cualquier fila existente como `ANSIBLE` (todo ticket creado
+antes de este cambio es, por definición, un ticket ANSIBLE), y recién
+ahí `SET NOT NULL`. `VARCHAR(63)` en `db_namespace`/`db_deployment`/
+`db_name` es el largo máximo de un label de DNS en Kubernetes (mismo
+límite que usa `namespace`/`deployment`/`dbName` en el `DbTargetDto` de
+`pcbox-api`). `sql_code` es `VARCHAR(5000)`, no `TEXT`: el cap de 5000
+caracteres es una regla de negocio explícita (ver spec del cambio), y
+acotarlo también en la base evita que un bug en la validación de la app
+deje pasar algo mucho más grande sin que nadie lo note.
+
+Verificar:
+
+```sql
+\d tickets
+```
+
+Debería listar `ticket_type` como `character varying(10)`, `not null`;
+`db_namespace`/`db_deployment`/`db_name` como `character varying(63)`
+sin `not null`; `operation_type` como `character varying(10)` sin
+`not null`; `sql_code` como `character varying(5000)` sin `not null`.
+
+Orden de deploy para este cambio completo: esta migración → `pcbox-api`
+(acepta ambos shapes) → `ticket-hub-api` → `ticket-hub`. Rollback: al
+revés, de adelante hacia atrás — las columnas son aditivas y pueden
+quedarse aunque se revierta el código que las usa.

@@ -1,30 +1,21 @@
 # Despliegue consolidado de bases de datos en microk8s (servidor pcbox)
 
-Motor: **PostgreSQL**, mismo criterio que `auth-db`/`pcbox-db`/`ticket-hub-db`
-(ver `auth-db.md`, `pcbox-db.md`, `ticket-hub-db.md`). A diferencia de esos
-tres documentos — un Pod de Postgres por base, cada uno en el namespace de su
-propia app —, acá **un solo Pod** de Postgres sirve las tres bases
+Motor: **PostgreSQL**. Este es el único documento de despliegue de bases de
+datos del ecosistema: **un solo Pod** de Postgres sirve las tres bases
 (`iam`, `pcbox`, `ticket-hub`) como bases lógicas separadas dentro de la
-misma instancia, en un namespace propio y dedicado: `databases`.
+misma instancia, en un namespace propio y dedicado: `databases`. Los tres
+Pods viejos, uno por app (`auth-db`, `pcbox-db`, `ticket-hub-db`), ya fueron
+decomisionados — este documento cubre el estado final.
 
 La base de `auth-api` se llama `iam` acá, no `auth` — es un renombre solo
-del nombre de la base dentro de este Pod consolidado, no de la app ni del
-Pod viejo (`auth-db.md`, la app `auth-api`, y su Secret
-`auth-db-credentials` siguen llamándose igual que siempre).
+del nombre de la base dentro de este Pod consolidado, no de la app (`auth-api`
+y su Secret `auth-db-credentials` siguen llamándose igual que siempre).
 
-El motivo es de gestión, no de arquitectura de datos: dejar de tener un Pod
-de Postgres por cada base (con su propio PVC, su propio Secret, su propio
-ciclo de vida) para tener un único punto de administración de base de datos
-para todo el ecosistema — lo que además simplifica cómo la ticketera
-(`ticket-hub-api` + `pcbox-api`, ver `pcbox-db.md` y
-`ticket-hub-db.md` §12) ejecuta SQL contra un target: un solo host y un solo
-Secret de credenciales a mantener en la allowlist, en vez de tres.
-
-Esto **no reemplaza** los tres Pods `auth-db`/`pcbox-db`/`ticket-hub-db` que
-ya están corriendo con datos reales — este documento cubre únicamente el
-aprovisionamiento del Pod consolidado nuevo, vacío, en el namespace
-`databases`. Migrar los datos existentes hacia acá y decomisionar los tres
-Pods viejos es un paso posterior, deliberadamente fuera de este documento.
+El motivo es de gestión, no de arquitectura de datos: un único punto de
+administración de base de datos para todo el ecosistema, en vez de un Pod por
+base — lo que además simplifica cómo la ticketera (`ticket-hub-api` +
+`pcbox-api`) ejecuta SQL contra un target: un solo host y un solo Secret de
+credenciales a mantener en la allowlist, en vez de tres.
 
 Igual que en `auth-db`/`pcbox-db`/`ticket-hub-db`: no hay ningún paso de
 migración con la CLI de TypeORM en todo este flujo — cada API corre con
@@ -52,9 +43,8 @@ Todos los comandos de este documento corren desde esa sesión.
 microk8s enable hostpath-storage
 ```
 
-Saltá este paso si `auth-db.md`/`pcbox-db.md`/`ticket-hub-db.md` ya
-corrieron alguno de ellos — el `StorageClass` `microk8s-hostpath` que esto
-crea es a nivel de cluster, no por namespace.
+Saltá este paso si ya está habilitado — el `StorageClass`
+`microk8s-hostpath` que esto crea es a nivel de cluster, no por namespace.
 
 ## 2. Crear el namespace `databases`
 
@@ -105,12 +95,10 @@ son independientes entre sí — ninguna referencia a otra con una foreign key
 cruzada (Postgres no lo permite entre bases distintas de la misma
 instancia).
 
-El DDL de cada archivo es el esquema **actual** de cada base — no el
-esquema original de su primer despliegue, sino el resultado de aplicarle
-todas las migraciones ya documentadas en `auth-db.md`/`pcbox-db.md`/
-`ticket-hub-db.md` hasta hoy. Un despliegue nuevo desde este ConfigMap
-arranca directamente en el estado final, sin tener que repetir a mano cada
-`ALTER TABLE` histórico.
+El DDL de cada archivo es el esquema **actual** de cada base — el estado
+final tras todas las migraciones aplicadas hasta hoy. Un despliegue nuevo
+desde este ConfigMap arranca directamente en ese estado final, sin tener
+que repetir a mano cada `ALTER TABLE` histórico.
 
 ```bash
 mkdir -p ~/postgres-init
@@ -182,9 +170,8 @@ CREATE TABLE internal_users_roles (
 );
 ```
 
-Esquema calcado de `auth-db.md` paso 4 — hasta hoy esa base no tiene
-ninguna migración posterior aplicada, así que su esquema original y su
-esquema actual son el mismo.
+Esta base no tiene ninguna migración posterior aplicada desde su primer
+despliegue, así que su esquema original y su esquema actual son el mismo.
 
 ```bash
 sudo nano ~/postgres-init/pcbox.sql
@@ -195,21 +182,39 @@ CREATE DATABASE pcbox;
 
 \c pcbox
 
-CREATE TABLE administrations (
+CREATE TABLE datacenter_register (
   id SERIAL PRIMARY KEY,
   ticket_number INTEGER NOT NULL,
   department VARCHAR(15) NOT NULL,
   approver VARCHAR(100) NOT NULL,
   informer VARCHAR(30) NOT NULL,
   status VARCHAR(15) NOT NULL,
-  file_content TEXT NOT NULL
+  file_content TEXT NOT NULL,
+  response TEXT
+);
+
+CREATE TABLE database_register (
+  id SERIAL PRIMARY KEY,
+  ticket_number INTEGER NOT NULL,
+  department VARCHAR(15) NOT NULL,
+  approver VARCHAR(100) NOT NULL,
+  informer VARCHAR(30) NOT NULL,
+  database VARCHAR(30) NOT NULL,
+  status VARCHAR(15) NOT NULL,
+  sql_content TEXT NOT NULL,
+  response TEXT
 );
 ```
 
-`approver VARCHAR(100)`, `informer VARCHAR(30)` y `file_content TEXT` ya
-reflejan las migraciones de `pcbox-db.md` §7 y §8 (ensanchado desde
-`VARCHAR(15)` y `VARCHAR(500)` respectivamente) — no el `VARCHAR(15)`/
-`VARCHAR(500)` del esquema original de esa base.
+La antigua tabla única `administrations` (compartida por los flavors ANSIBLE
+y DATABASE) queda reemplazada por estas dos: `datacenter_register` para
+ANSIBLE (vía el módulo `pcbox`) y `database_register` para DATABASE (vía el
+módulo `database`) — la tabla misma es el discriminador. `database_register`
+suma la columna `database` (el `dbName` del target contra el que corrió el
+SQL); `namespace`/`deployment` no se persisten en ninguna tabla — pcbox-api
+los sigue necesitando como input transitorio para `DbTargetValidator`/
+`SqlPlaybookBuilder`, pero nunca se guardan. Ambas suman `response TEXT`,
+nullable, para la respuesta de la ejecución.
 
 ```bash
 sudo nano ~/postgres-init/ticket-hub.sql
@@ -220,23 +225,32 @@ CREATE DATABASE "ticket-hub";
 
 \c "ticket-hub"
 
-CREATE TABLE tickets (
+CREATE TABLE datacenter_tickets (
   id SERIAL PRIMARY KEY,
   number INTEGER NOT NULL UNIQUE,
-  creator INTEGER NOT NULL,
+  informer VARCHAR(30) NOT NULL,
   assignee VARCHAR(100),
   department VARCHAR(25) NOT NULL,
   subject VARCHAR(100) NOT NULL,
   status VARCHAR(20) NOT NULL,
   description VARCHAR(200) NOT NULL,
-  code_ansible VARCHAR(500),
+  code_ansible VARCHAR(5000),
+  response TEXT
+);
+
+CREATE TABLE database_tickets (
+  id SERIAL PRIMARY KEY,
+  number INTEGER NOT NULL UNIQUE,
+  informer VARCHAR(30) NOT NULL,
+  assignee VARCHAR(100),
+  department VARCHAR(25) NOT NULL,
+  subject VARCHAR(100) NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  description VARCHAR(200) NOT NULL,
   response TEXT,
-  informer VARCHAR(30),
-  ticket_type VARCHAR(10) NOT NULL,
   db_namespace VARCHAR(63),
   db_deployment VARCHAR(63),
   db_name VARCHAR(63),
-  operation_type VARCHAR(10),
   sql_code VARCHAR(5000)
 );
 ```
@@ -247,14 +261,18 @@ mismo motivo por el que la base vieja se llamó `ticket-hub-db` y no
 `ticket-hub`, aunque el driver de Postgres (y TypeORM) no tiene problema
 con el nombre una vez que ya existe.
 
-Esta única tabla `tickets` es el resultado final de encadenar
-`ticket-hub-db.md` §7 (`number`), §8 (`response`), §11 (`creator` deja de
-tener FK y pasa a ser el `sub` de `auth-api`; `assignee` deja de ser FK y
-pasa a `VARCHAR(100)` de texto libre; se agrega `informer`; se eliminan
-`users`/`roles`) y §12 (`ticket_type` + las cinco columnas `db_*`/
-`operation_type`/`sql_code` del ticket tipo `DATABASE`). Por eso acá no
-aparecen las tablas `users`/`roles` del esquema original: ya no tienen
-ningún consumidor.
+La antigua tabla única `tickets` (discriminada por la columna `ticket_type`)
+queda reemplazada por estas dos: `datacenter_tickets` para ANSIBLE y
+`database_tickets` para DATABASE — la tabla misma es el discriminador, así
+que ni `ticket_type` ni `creator` sobreviven (tampoco tienen consumidor:
+`informer`, el email de quien creó el ticket, es el único dato de autoría
+que usa la app). `database_tickets` conserva `db_namespace`/`db_deployment`/
+`db_name`/`sql_code` porque `pcbox-api` los sigue necesitando como input al
+aprobar el ticket, en una request separada de la creación. Las tablas
+`users`/`roles` del esquema original tampoco aparecen: ya no tienen ningún
+consumidor. Cada tabla nueva calcula su propio `MAX(number) + 1` de forma
+independiente — puede existir un `TK-5` ANSIBLE y un `TK-5` DATABASE al
+mismo tiempo.
 
 Con los tres archivos listos, crear el ConfigMap a partir de ellos —
 mismo comando que se usa hoy para las apps, adaptado a las tres bases de
@@ -395,8 +413,9 @@ microk8s kubectl exec -it -n databases deployment/postgres -- \
   psql -U usuario_db -d "ticket-hub" -c '\dt'
 ```
 
-Debería listar las ocho tablas de `iam`, `administrations` en `pcbox`, y
-`tickets` en `ticket-hub`.
+Debería listar las ocho tablas de `iam`; `datacenter_register` y
+`database_register` en `pcbox`; `datacenter_tickets` y `database_tickets` en
+`ticket-hub`.
 
 Desde cualquier otro namespace del cluster (`auth-api`, `pcbox-api`,
 `ticket-hub`), la instancia se ve en
@@ -418,12 +437,11 @@ microk8s kubectl exec -it -n databases deployment/postgres -- \
   psql -U usuario_db -d iam
 ```
 
-(o `-d pcbox` / `-d "ticket-hub"` según cuál base cambie). Seguí desde ahí
-el mismo patrón de cuatro pasos que ya usaron `tickets.number` y
-`tickets.ticket_type` (ver `ticket-hub-db.md` §7 y §12) si la columna nueva
-tiene que terminar siendo `NOT NULL` en una tabla que puede que ya tenga
-filas: `ADD COLUMN` sin `NOT NULL` primero, `UPDATE` para completar las
-filas existentes, y recién después `ALTER COLUMN ... SET NOT NULL`.
+(o `-d pcbox` / `-d "ticket-hub"` según cuál base cambie). Si la columna
+nueva tiene que terminar siendo `NOT NULL` en una tabla que puede que ya
+tenga filas, seguí este patrón de cuatro pasos: `ADD COLUMN` sin `NOT NULL`
+primero, `UPDATE` para completar las filas existentes, y recién después
+`ALTER COLUMN ... SET NOT NULL`.
 
 ## 8. Datos producidos por este proceso
 
@@ -432,14 +450,9 @@ filas existentes, y recién después `ALTER COLUMN ... SET NOT NULL`.
 | Namespace `databases` | Namespace de infraestructura, dueño del Pod de Postgres consolidado | Paso 2 | Aísla el ciclo de vida de las bases del ciclo de vida de las apps que las consumen |
 | Secret `postgres-credentials` (namespace `databases`) | `POSTGRES_USER`/`POSTGRES_PASSWORD`, dueño de las tres bases | Paso 3 (creado con `kubectl create secret`, editable después desde el Dashboard) | Credencial única de conexión a las tres bases; cualquier rotación se hace editando este Secret desde el Dashboard, no por SSH |
 | ConfigMap `postgres-init` (namespace `databases`) | Tres scripts (`iam.sql`, `pcbox.sql`, `ticket-hub.sql`), uno por base | Paso 4 | Aplicado por el mecanismo `docker-entrypoint-initdb.d` de la imagen de Postgres al primer arranque con el volumen vacío |
-| Bases `iam`, `pcbox`, `ticket-hub` | Las tres bases lógicas de la instancia, cada una con el esquema final documentado en `auth-db.md`/`pcbox-db.md`/`ticket-hub-db.md` (`iam` = la base de `auth-api`, renombrada) | Paso 4 (ejecutado al arrancar el Pod, paso 5) | Almacenamiento para `auth-api`, `pcbox-api` y `ticket-hub-api` respectivamente |
-| Host interno `postgres.databases.svc.cluster.local:5432` | DNS interno del cluster que apunta al Service de la instancia consolidada | Paso 5 (`Service` `postgres`) | Cadena de conexión que cada app usará (`DATABASE_HOST`) una vez migrada — ver nota abajo |
+| Bases `iam`, `pcbox`, `ticket-hub` | Las tres bases lógicas de la instancia (`iam` = la base de `auth-api`, renombrada) | Paso 4 (ejecutado al arrancar el Pod, paso 5) | Almacenamiento para `auth-api`, `pcbox-api` y `ticket-hub-api` respectivamente |
+| Host interno `postgres.databases.svc.cluster.local:5432` | DNS interno del cluster que apunta al Service de la instancia consolidada | Paso 5 (`Service` `postgres`) | Cadena de conexión que usa cada app (`DATABASE_HOST`) |
 
-> **Pendiente, fuera de este documento:** ninguna app apunta todavía a este
-> Pod — `auth-api`, `pcbox-api` y `ticket-hub-api` siguen conectadas a sus
-> tres Pods viejos (`auth-db`, `pcbox-db`, `ticket-hub-db`), que siguen
-> corriendo con sus datos reales. Migrar esos datos (`pg_dump`/`pg_restore`
-> de cada base vieja hacia acá), actualizar `DATABASE_HOST`/`DATABASE_NAME`
-> de cada app en `infra-hub/apps/<app>/` y recién después decomisionar los
-> tres Pods viejos es un cambio aparte, a documentar cuando se decida
-> ejecutar el corte.
+Los tres Pods viejos por app (`auth-db`, `pcbox-db`, `ticket-hub-db`) ya
+fueron decomisionados — `auth-api`, `pcbox-api` y `ticket-hub-api` corren
+contra este Pod consolidado.

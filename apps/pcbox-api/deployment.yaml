@@ -8,8 +8,10 @@
 # hand per documentation/pcbox.administrations-deploy.md.
 #
 # No more `pcbox-api-admin-credentials` Secret / ADMIN_API_KEY -- this
-# app verifies callers via auth-api's JWKS now (AUTH_API_URL), not a
-# shared secret. See src/modules/auth/'s history.
+# app verifies callers via iam-api's JWKS now (AUTH_API_URL, unchanged
+# variable name -- auth-api's successor after the consolidated Postgres
+# cutover, see databases/jtagram.db.md), not a shared secret. See
+# src/modules/auth/'s history.
 #
 # Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
 # with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
@@ -62,7 +64,7 @@ spec:
             - name: LOG_LEVEL
               value: "info"
             - name: AUTH_API_URL
-              value: http://auth-api.auth-api.svc.cluster.local:3000
+              value: http://iam-api.iam-api.svc.cluster.local:3000
             - name: PCBOX_SSH_HOST
               value: PCBOX_SSH_HOST_VALUE
             - name: PCBOX_SSH_USER

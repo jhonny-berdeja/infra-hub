@@ -3,9 +3,11 @@
 # names, not the NodePort/Tailscale path a client outside the cluster
 # has to use.
 #
-# app/api/login/route.ts authenticates against auth-api now, not
-# ticket-hub-api (which has no login of its own anymore -- see its
-# history): AUTH_API_URL + TICKET_HUB_APPLICATION_NAME are for that.
+# app/api/login/route.ts authenticates against iam-api now (auth-api's
+# successor after the consolidated Postgres cutover, see
+# databases/jtagram.db.md), not ticket-hub-api (which has no login of its
+# own anymore -- see its history): AUTH_API_URL (unchanged variable name)
+# + TICKET_HUB_APPLICATION_NAME are for that.
 # TICKET_HUB_API_URL is still used by every other Route Handler
 # (tickets, me) to reach ticket-hub-api directly.
 #
@@ -47,7 +49,7 @@ spec:
             - name: TICKET_HUB_API_URL
               value: http://ticket-hub-api.ticket-hub.svc.cluster.local:3000
             - name: AUTH_API_URL
-              value: http://auth-api.auth-api.svc.cluster.local:3000
+              value: http://iam-api.iam-api.svc.cluster.local:3000
             - name: TICKET_HUB_COOKIE_SECURE
               value: "false"
             - name: TICKET_HUB_APPLICATION_NAME

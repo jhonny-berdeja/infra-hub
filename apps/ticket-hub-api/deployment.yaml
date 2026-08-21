@@ -6,13 +6,15 @@
 # to already exist (owned by ticket-hub-db's own setup, not this repo).
 # `pcbox-api-notification-credentials` is created by hand per this repo's
 # own databases/ticket-hub-db.md, step 9 — it now holds
-# the apps-user credentials this app logs into auth-api with before
+# the apps-user credentials this app logs into iam-api with before
 # calling pcbox-api (PCBOX_API_CLIENT_ID/PCBOX_API_CLIENT_SECRET), not a
 # shared key with pcbox-api directly anymore.
 #
 # No `ticket-hub-api-credentials` Secret anymore -- it only ever held
-# JWT_SECRET, unused now that this app verifies tokens via auth-api's
-# JWKS instead of signing/verifying its own (see AUTH_API_URL below).
+# JWT_SECRET, unused now that this app verifies tokens via iam-api's
+# JWKS instead of signing/verifying its own (see AUTH_API_URL below --
+# the variable name is unchanged, only the value moved from auth-api to
+# iam-api after the consolidated Postgres cutover).
 #
 # Placeholder image reference. The deploy workflow replaces DOCKERHUB_USER
 # with secrets.DOCKERHUB_USERNAME and IMAGE_TAG with the validated deploy
@@ -57,24 +59,27 @@ spec:
               value: "5432"
             - name: DATABASE_NAME
               value: ticket-hub-db
-            # In-cluster URL of auth-api (different namespace, reachable
-            # cross-namespace by its FQDN). JwksClientService polls
+            # In-cluster URL of iam-api (different namespace, reachable
+            # cross-namespace by its FQDN; auth-api's successor after the
+            # consolidated Postgres cutover -- see
+            # databases/jtagram.db.md). JwksClientService polls
             # ${AUTH_API_URL}/.well-known/jwks.json every 5 minutes to
             # refresh the RS256 key JwtAuthGuard verifies every token
             # against -- this app signs and verifies nothing of its own
             # anymore.
             - name: AUTH_API_URL
-              value: http://auth-api.auth-api.svc.cluster.local:3000
+              value: http://iam-api.iam-api.svc.cluster.local:3000
             - name: PORT
               value: "3000"
             - name: LOG_LEVEL
               value: "info"
             - name: PCBOX_API_URL
               value: http://pcbox-api.pcbox-api.svc.cluster.local:3000
-            # The application PcboxApiConnector logs into on auth-api
+            # The application PcboxApiConnector logs into on iam-api
             # before calling pcbox-api -- must match pcbox-api's own
-            # registered application name in auth-api (see the data
-            # migration in iam).
+            # registered application name in iam-api. Not bootstrapped
+            # yet post-cutover -- see the open item in
+            # databases/iam-admin-bootstrap.md's follow-ups.
             - name: PCBOX_API_APPLICATION_NAME
               value: pcbox-api
             - name: PCBOX_API_CLIENT_ID

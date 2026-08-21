@@ -113,3 +113,21 @@ La segunda consulta debería devolver una fila: tu email, rol `ADMIN`.
 | Fila en `apps_roles` (`name = 'ADMIN'`, `application_id` = el de arriba) | El rol de administrador total sobre `iam` | Habilita, a quien lo tenga asignado, todos los endpoints protegidos con `@Roles(Role.ADMIN)` en `iam-api` |
 | Fila en `internal_users` | Tu propio usuario humano, con la contraseña ya hasheada | Es la cuenta con la que te logueás en `iam` desde `POST /internal-users/login` |
 | Filas en `internal_users_applications` / `internal_users_roles` | Acceso a la aplicación `iam` + rol `ADMIN` asignado a tu usuario | Sin ambas, el login puede autenticar la contraseña pero el `RolesGuard` va a rechazar cualquier endpoint protegido |
+
+## 6. Pendiente: mismo bootstrap para las demás apps del ecosistema
+
+Este documento solo registra la aplicación `iam`. Cada app que loguea
+contra `iam-api` necesita su propia fila en `apps_applications` (mismo
+patrón: `INSERT` + rol + asignación), porque la base `iam` se creó vacía
+— no se migraron los datos de `auth-db`. Quedan pendientes, con el mismo
+procedimiento de este documento:
+
+- **`ticket-hub`** (frontend): aplicación `'ticket-hub'`, reusando el
+  mismo `internal_user` ya creado acá en vez de crear uno nuevo.
+- **`pcbox-api`** (M2M): este caso es distinto — no es un `internal_user`
+  sino un `apps_user` (login vía `POST /apps-users/login`, no
+  `/internal-users/login`), con su propio `cliente_id`/`cliente_secret`.
+  Lo usa `ticket-hub-api` (`PcboxApiConnector`) antes de llamar a
+  `pcbox-api` — ver el Secret `pcbox-api-notification-credentials` en el
+  namespace `ticket-hub`, que también hay que actualizar con el
+  `cliente_id`/`cliente_secret` nuevos una vez creado.

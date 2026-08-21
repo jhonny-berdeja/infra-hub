@@ -2,8 +2,13 @@
 # validated as mandatory by src/common/config/env.validation.ts — the Pod
 # fails fast at boot if any is missing or malformed.
 #
-# `ticket-hub-db-credentials` and the `ticket-hub-db` Service are assumed
-# to already exist (owned by ticket-hub-db's own setup, not this repo).
+# `ticket-hub` lives in the consolidated Postgres Pod now (namespace
+# `databases`, see databases/jtagram.db.md), not in the old per-app
+# `ticket-hub-db` Pod -- a Kubernetes Secret can't be read across
+# namespaces, so `postgres-credentials` here is a same-namespace copy of
+# the Secret of the same name in `databases` (same POSTGRES_USER/
+# POSTGRES_PASSWORD values, created by hand, not synced automatically --
+# rotate both together).
 # `pcbox-api-notification-credentials` is created by hand per this repo's
 # own databases/ticket-hub-db.md, step 9 — it now holds
 # the apps-user credentials this app logs into iam-api with before
@@ -46,19 +51,19 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: ticket-hub-db-credentials
+                  name: postgres-credentials
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: ticket-hub-db-credentials
+                  name: postgres-credentials
                   key: POSTGRES_PASSWORD
             - name: DATABASE_HOST
-              value: ticket-hub-db.ticket-hub.svc.cluster.local
+              value: postgres.databases.svc.cluster.local
             - name: DATABASE_PORT
               value: "5432"
             - name: DATABASE_NAME
-              value: ticket-hub-db
+              value: ticket-hub
             # In-cluster URL of iam-api (different namespace, reachable
             # cross-namespace by its FQDN; auth-api's successor after the
             # consolidated Postgres cutover -- see

@@ -2,10 +2,15 @@
 # validated as mandatory by src/common/config/env.validation.ts — the Pod
 # fails fast at boot if any is missing or malformed.
 #
-# `pcbox-db-credentials` and the `pcbox-db` Service are assumed to
-# already exist (owned by pcbox-db's own setup, see databases/pcbox-db.md
-# in this repo). `pcbox-ssh-key` is created by
-# hand per documentation/pcbox.administrations-deploy.md.
+# `pcbox` lives in the consolidated Postgres Pod now (namespace
+# `databases`, see databases/jtagram.db.md), not in the old per-app
+# `pcbox-db` Pod (databases/pcbox-db.md is history at this point) -- a
+# Kubernetes Secret can't be read across namespaces, so
+# `postgres-credentials` here is a same-namespace copy of the Secret of
+# the same name in `databases` (same POSTGRES_USER/POSTGRES_PASSWORD
+# values, created by hand, not synced automatically -- rotate both
+# together). `pcbox-ssh-key` is created by hand per
+# documentation/pcbox.administrations-deploy.md.
 #
 # No more `pcbox-api-admin-credentials` Secret / ADMIN_API_KEY -- this
 # app verifies callers via iam-api's JWKS now (AUTH_API_URL, unchanged
@@ -46,19 +51,19 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: pcbox-db-credentials
+                  name: postgres-credentials
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: pcbox-db-credentials
+                  name: postgres-credentials
                   key: POSTGRES_PASSWORD
             - name: DATABASE_HOST
-              value: pcbox-db.pcbox-api.svc.cluster.local
+              value: postgres.databases.svc.cluster.local
             - name: DATABASE_PORT
               value: "5432"
             - name: DATABASE_NAME
-              value: pcbox-db
+              value: pcbox
             - name: PORT
               value: "3000"
             - name: LOG_LEVEL

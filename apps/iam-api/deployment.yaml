@@ -1,8 +1,12 @@
 # All 9 env vars mirror src/common/config/env.validation.ts in iam-api —
 # the Pod fails fast at boot if any is missing or malformed.
 #
-# `iam-db-credentials` and the `iam-db` Service are assumed to already
-# exist (owned by iam-db's own setup — see infra-hub/databases/iam-db.md).
+# `iam` lives in the consolidated Postgres Pod (namespace `databases`, see
+# infra-hub/databases/jtagram.db.md), not in a per-app Pod — a Kubernetes
+# Secret can't be read across namespaces, so `postgres-credentials` here is
+# a same-namespace copy of the Secret of the same name in `databases`
+# (same POSTGRES_USER/POSTGRES_PASSWORD values, created by hand, not
+# synced automatically — rotate both together).
 # `iam-api-credentials` is created from secret.example.yaml — see this
 # app's usage in this repo's README.md.
 #
@@ -36,19 +40,19 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: iam-db-credentials
+                  name: postgres-credentials
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: iam-db-credentials
+                  name: postgres-credentials
                   key: POSTGRES_PASSWORD
             - name: DATABASE_HOST
-              value: iam-db.iam-api.svc.cluster.local
+              value: postgres.databases.svc.cluster.local
             - name: DATABASE_PORT
               value: "5432"
             - name: DATABASE_NAME
-              value: iam-db
+              value: iam
             - name: JWT_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:

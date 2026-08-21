@@ -90,27 +90,27 @@ jobs:
         run: kubectl apply -f "$WORK_DIR/"
 
       - name: Restart the rollout so the new image digest is pulled.
-        run: kubectl rollout restart deployment/iam -n auth-api
+        run: kubectl rollout restart deployment/iam -n iam-api
 
       - name: Wait for the rollout to finish.
-        run: kubectl rollout status deployment/iam -n auth-api --timeout=180s
+        run: kubectl rollout status deployment/iam -n iam-api --timeout=180s
 
       - name: Print the deployment status.
-        run: kubectl get deployment iam -n auth-api
+        run: kubectl get deployment iam -n iam-api
 
       - name: Print the running pods.
-        run: kubectl get pods -n auth-api -l app=iam
+        run: kubectl get pods -n iam-api -l app=iam
 
       - name: Print the service.
-        run: kubectl get service iam -n auth-api
+        run: kubectl get service iam -n iam-api
 
       - name: Print the deployed image reference.
-        run: .github/scripts/print-deployed-image.sh iam auth-api
+        run: .github/scripts/print-deployed-image.sh iam iam-api
 
       - name: Describe the deployment if the deploy failed.
         if: failure()
-        run: kubectl describe deployment iam -n auth-api || true
+        run: kubectl describe deployment iam -n iam-api || true
 
       - name: Show recent cluster events if the deploy failed.
         if: failure()
-        run: .github/scripts/show-recent-cluster-events.sh auth-api
+        run: .github/scripts/show-recent-cluster-events.sh iam-api

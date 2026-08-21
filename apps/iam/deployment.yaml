@@ -2,10 +2,10 @@
 # its Route Handlers (app/api/**/route.ts) reach the backend over the
 # in-cluster ClusterIP DNS name, not any path a client outside the cluster
 # would use. Shares the `iam-api` namespace (not a dedicated `iam`
-# namespace) because that namespace already exists and is documented in
-# infra-hub/databases/iam-db.md — same principle as ticket-hub/
-# ticket-hub-api sharing one namespace, just named after the backend here
-# instead of the frontend.
+# namespace) because that namespace already exists (created for the
+# iam-api Deployment/Service, see apps/iam-api/) — same principle as
+# ticket-hub/ticket-hub-api sharing one namespace, just named after the
+# backend here instead of the frontend.
 #
 # IAM_COOKIE_SECURE is "false": no Ingress/TLS termination is set up for
 # this app — same reasoning as ticket-hub's own deployment.yaml.

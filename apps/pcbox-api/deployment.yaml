@@ -41,6 +41,13 @@ spec:
       labels:
         app: pcbox-api
     spec:
+      # Dedicated ServiceAccount for the kubernetes/ module's in-cluster
+      # calls to the k8s API -- see rbac/deploy.md for the ServiceAccount/
+      # ClusterRole/RoleBindings this name refers to (applied by hand,
+      # not by this pipeline). Before this, the Pod ran as the
+      # namespace's "default" ServiceAccount, which has no k8s API
+      # permissions at all.
+      serviceAccountName: pcbox-api
       containers:
         - name: pcbox-api
           image: docker.io/DOCKERHUB_USER/pcbox-api:IMAGE_TAG

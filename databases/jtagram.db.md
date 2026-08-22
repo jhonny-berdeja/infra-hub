@@ -204,17 +204,34 @@ CREATE TABLE database_register (
   sql_content TEXT NOT NULL,
   response TEXT
 );
+
+CREATE TABLE kubernetes_register (
+  id SERIAL PRIMARY KEY,
+  ticket_number INTEGER NOT NULL,
+  department VARCHAR(15) NOT NULL,
+  approver VARCHAR(100) NOT NULL,
+  informer VARCHAR(30) NOT NULL,
+  status VARCHAR(15) NOT NULL,
+  file_content TEXT NOT NULL,
+  response TEXT
+);
 ```
 
 La antigua tabla única `administrations` (compartida por los flavors ANSIBLE
-y DATABASE) queda reemplazada por estas dos: `datacenter_register` para
-ANSIBLE (vía el módulo `pcbox`) y `database_register` para DATABASE (vía el
-módulo `database`) — la tabla misma es el discriminador. `database_register`
+y DATABASE) queda reemplazada por estas tres: `datacenter_register` para
+ANSIBLE (vía el módulo `pcbox`), `database_register` para DATABASE (vía el
+módulo `database`), y `kubernetes_register` para KUBERNETES (vía el módulo
+`kubernetes`) — la tabla misma es el discriminador. `database_register`
 suma la columna `database` (el `dbName` del target contra el que corrió el
 SQL); `namespace`/`deployment` no se persisten en ninguna tabla — pcbox-api
 los sigue necesitando como input transitorio para `DbTargetValidator`/
-`SqlPlaybookBuilder`, pero nunca se guardan. Ambas suman `response TEXT`,
-nullable, para la respuesta de la ejecución.
+`SqlPlaybookBuilder`, pero nunca se guardan. `kubernetes_register` es la más
+chica de las tres: mismas columnas que `datacenter_register` (mismo
+`fileContent TEXT`, el manifiesto YAML de pie, sin transformar), sin ninguna
+columna propia — a diferencia de `database_register`, no necesita un target
+estructurado aparte porque el namespace/kind de cada recurso ya viene
+adentro del propio YAML. Las tres suman `response TEXT`, nullable, para la
+respuesta de la ejecución.
 
 ```bash
 sudo nano ~/postgres-init/ticket-hub.sql
@@ -253,6 +270,19 @@ CREATE TABLE database_tickets (
   db_name VARCHAR(63),
   sql_code VARCHAR(5000)
 );
+
+CREATE TABLE kubernetes_tickets (
+  id SERIAL PRIMARY KEY,
+  number INTEGER NOT NULL UNIQUE,
+  informer VARCHAR(30) NOT NULL,
+  assignee VARCHAR(100),
+  department VARCHAR(25) NOT NULL,
+  subject VARCHAR(100) NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  description VARCHAR(200) NOT NULL,
+  code_yaml VARCHAR(5000),
+  response TEXT
+);
 ```
 
 `"ticket-hub"` va entre comillas dobles en el `CREATE DATABASE` y en el
@@ -262,17 +292,21 @@ mismo motivo por el que la base vieja se llamó `ticket-hub-db` y no
 con el nombre una vez que ya existe.
 
 La antigua tabla única `tickets` (discriminada por la columna `ticket_type`)
-queda reemplazada por estas dos: `datacenter_tickets` para ANSIBLE y
-`database_tickets` para DATABASE — la tabla misma es el discriminador, así
-que ni `ticket_type` ni `creator` sobreviven (tampoco tienen consumidor:
-`informer`, el email de quien creó el ticket, es el único dato de autoría
-que usa la app). `database_tickets` conserva `db_namespace`/`db_deployment`/
-`db_name`/`sql_code` porque `pcbox-api` los sigue necesitando como input al
-aprobar el ticket, en una request separada de la creación. Las tablas
-`users`/`roles` del esquema original tampoco aparecen: ya no tienen ningún
-consumidor. Cada tabla nueva calcula su propio `MAX(number) + 1` de forma
-independiente — puede existir un `TK-5` ANSIBLE y un `TK-5` DATABASE al
-mismo tiempo.
+queda reemplazada por estas tres: `datacenter_tickets` para ANSIBLE,
+`database_tickets` para DATABASE, y `kubernetes_tickets` para KUBERNETES —
+la tabla misma es el discriminador, así que ni `ticket_type` ni `creator`
+sobreviven (tampoco tienen consumidor: `informer`, el email de quien creó
+el ticket, es el único dato de autoría que usa la app). `database_tickets`
+conserva `db_namespace`/`db_deployment`/`db_name`/`sql_code` porque
+`pcbox-api` los sigue necesitando como input al aprobar el ticket, en una
+request separada de la creación. `kubernetes_tickets` es una copia exacta
+de `datacenter_tickets`, salvo `code_yaml` en vez de `code_ansible` — mismo
+motivo que `kubernetes_register` arriba: el manifiesto YAML no necesita
+ninguna columna de target aparte. Las tablas `users`/`roles` del esquema
+original tampoco aparecen: ya no tienen ningún consumidor. Cada tabla nueva
+calcula su propio `MAX(number) + 1` de forma independiente — puede existir
+un `TK-5` ANSIBLE, un `TK-5` DATABASE y un `TK-5` KUBERNETES al mismo
+tiempo.
 
 Con los tres archivos listos, crear el ConfigMap a partir de ellos —
 mismo comando que se usa hoy para las apps, adaptado a las tres bases de
@@ -413,9 +447,9 @@ microk8s kubectl exec -it -n databases deployment/postgres -- \
   psql -U usuario_db -d "ticket-hub" -c '\dt'
 ```
 
-Debería listar las ocho tablas de `iam`; `datacenter_register` y
-`database_register` en `pcbox`; `datacenter_tickets` y `database_tickets` en
-`ticket-hub`.
+Debería listar las ocho tablas de `iam`; `datacenter_register`,
+`database_register` y `kubernetes_register` en `pcbox`; `datacenter_tickets`,
+`database_tickets` y `kubernetes_tickets` en `ticket-hub`.
 
 Desde cualquier otro namespace del cluster (`auth-api`, `pcbox-api`,
 `ticket-hub`), la instancia se ve en
@@ -424,7 +458,54 @@ no distingue namespace de origen, solo el del Service (`databases`), así
 que las tres apps llegan ahí sin importar en qué namespace corren ellas
 mismas.
 
-## 7. Agregar una columna más adelante (precedente para futuras migraciones)
+## 7. Crear las tablas de `kubernetes_register`/`kubernetes_tickets` en una instancia ya desplegada
+
+Si esta instancia ya estaba corriendo antes de que `kubernetes_register`
+(base `pcbox`) y `kubernetes_tickets` (base `ticket-hub`) se agregaran al
+DDL del paso 4, esas dos tablas no existen todavía — el ConfigMap
+`postgres-init` solo corre una vez, al primer arranque con el volumen
+vacío (mismo motivo que el paso 8 de más abajo, para agregar una columna).
+Se crean a mano, una sola vez, conectando al Pod y eligiendo la base con
+`-d`:
+
+```bash
+microk8s kubectl exec -it -n databases deployment/postgres -- \
+  psql -U usuario_db -d pcbox -c '
+CREATE TABLE kubernetes_register (
+  id SERIAL PRIMARY KEY,
+  ticket_number INTEGER NOT NULL,
+  department VARCHAR(15) NOT NULL,
+  approver VARCHAR(100) NOT NULL,
+  informer VARCHAR(30) NOT NULL,
+  status VARCHAR(15) NOT NULL,
+  file_content TEXT NOT NULL,
+  response TEXT
+);'
+
+microk8s kubectl exec -it -n databases deployment/postgres -- \
+  psql -U usuario_db -d "ticket-hub" -c '
+CREATE TABLE kubernetes_tickets (
+  id SERIAL PRIMARY KEY,
+  number INTEGER NOT NULL UNIQUE,
+  informer VARCHAR(30) NOT NULL,
+  assignee VARCHAR(100),
+  department VARCHAR(25) NOT NULL,
+  subject VARCHAR(100) NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  description VARCHAR(200) NOT NULL,
+  code_yaml VARCHAR(5000),
+  response TEXT
+);'
+```
+
+Esto es una condición previa real para que la feature de tickets Kubernetes
+funcione en un cluster ya desplegado: sin estas dos tablas, `ticket-hub-api`
+y `pcbox-api` arrancan igual (`synchronize: false`, ninguna app valida el
+esquema al boot) pero cualquier request que toque una de las dos tablas
+falla en tiempo de ejecución contra Postgres (`relation ... does not
+exist`) recién al primer intento de uso, no antes.
+
+## 8. Agregar una columna más adelante (precedente para futuras migraciones)
 
 Igual que en los tres documentos por app: el ConfigMap `postgres-init` del
 paso 4 **no** se vuelve a ejecutar contra un volumen que ya tiene datos, así
@@ -443,7 +524,7 @@ tenga filas, seguí este patrón de cuatro pasos: `ADD COLUMN` sin `NOT NULL`
 primero, `UPDATE` para completar las filas existentes, y recién después
 `ALTER COLUMN ... SET NOT NULL`.
 
-## 8. Datos producidos por este proceso
+## 9. Datos producidos por este proceso
 
 | Dato | Qué es | Qué paso lo produjo | Para qué sirve |
 |---|---|---|---|

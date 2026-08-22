@@ -213,7 +213,8 @@ CREATE TABLE kubernetes_register (
   informer VARCHAR(30) NOT NULL,
   status VARCHAR(15) NOT NULL,
   file_content TEXT NOT NULL,
-  response TEXT
+  response TEXT,
+  execution_type VARCHAR(10) NOT NULL
 );
 ```
 
@@ -281,7 +282,8 @@ CREATE TABLE kubernetes_tickets (
   status VARCHAR(20) NOT NULL,
   description VARCHAR(200) NOT NULL,
   code_yaml VARCHAR(5000),
-  response TEXT
+  response TEXT,
+  execution_type VARCHAR(10) NOT NULL
 );
 ```
 
@@ -479,7 +481,8 @@ CREATE TABLE kubernetes_register (
   informer VARCHAR(30) NOT NULL,
   status VARCHAR(15) NOT NULL,
   file_content TEXT NOT NULL,
-  response TEXT
+  response TEXT,
+  execution_type VARCHAR(10) NOT NULL
 );'
 
 microk8s kubectl exec -it -n databases deployment/postgres -- \
@@ -494,7 +497,8 @@ CREATE TABLE kubernetes_tickets (
   status VARCHAR(20) NOT NULL,
   description VARCHAR(200) NOT NULL,
   code_yaml VARCHAR(5000),
-  response TEXT
+  response TEXT,
+  execution_type VARCHAR(10) NOT NULL
 );'
 ```
 
@@ -524,7 +528,42 @@ tenga filas, seguí este patrón de cuatro pasos: `ADD COLUMN` sin `NOT NULL`
 primero, `UPDATE` para completar las filas existentes, y recién después
 `ALTER COLUMN ... SET NOT NULL`.
 
-## 9. Datos producidos por este proceso
+## 9. Agregar `execution_type` a `kubernetes_register`/`kubernetes_tickets` en una instancia ya desplegada
+
+Precedente concreto del patrón genérico del paso 8, para esta columna puntual:
+si esta instancia ya tenía filas en `kubernetes_register` (base `pcbox`) y
+`kubernetes_tickets` (base `ticket-hub`) antes de que `execution_type` se
+agregara al DDL del paso 4, hay que aplicarla a mano con `ALTER TABLE`, no
+recrear la tabla.
+
+A diferencia del patrón de tres pasos del paso 8 (`ADD COLUMN` nullable →
+`UPDATE` → `SET NOT NULL`), acá alcanza con un solo `ALTER TABLE` con
+`DEFAULT`: Postgres (desde la versión 11) no reescribe la tabla fila por
+fila cuando el default es una constante, así que `NOT NULL DEFAULT
+'MANIFEST'` en un solo paso ya deja las filas existentes completas. Sin el
+`DEFAULT`, el `ALTER TABLE` falla contra cualquier fila existente
+(`column "execution_type" ... contains null values`).
+
+```bash
+microk8s kubectl exec -it -n databases deployment/postgres -- \
+  psql -U usuario_db -d pcbox -c "
+ALTER TABLE kubernetes_register
+  ADD COLUMN execution_type VARCHAR(10) NOT NULL DEFAULT 'MANIFEST';"
+
+microk8s kubectl exec -it -n databases deployment/postgres -- \
+  psql -U usuario_db -d "ticket-hub" -c "
+ALTER TABLE kubernetes_tickets
+  ADD COLUMN execution_type VARCHAR(10) NOT NULL DEFAULT 'MANIFEST';"
+```
+
+`MANIFEST` como default backfillea las filas viejas correctamente: hasta que
+el flujo Ansible existió (`POST /kubernetes/ansible` en `pcbox-api`,
+`PcboxApiConnector.createKubernetesAnsibleAction` en `ticket-hub-api`), todo
+registro que ya existía vino del flujo Manifest — `ANSIBLE` nunca aplica
+retroactivamente. Mismo SQL documentado en `sql/execution_type.sql` de cada
+repo (`pcbox-api`, `ticket-hub-api`).
+
+## 10. Datos producidos por este proceso
 
 | Dato | Qué es | Qué paso lo produjo | Para qué sirve |
 |---|---|---|---|
